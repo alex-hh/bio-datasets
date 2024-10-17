@@ -1,6 +1,6 @@
 import numpy as np
-
 from biotite.structure.sequence import to_sequence
+
 from bio_datasets.features.atom_array import AtomArrayFeature
 from bio_datasets.protein.protein import decode_aa_index
 
