@@ -5,7 +5,7 @@ We simply wrap Biotite's AtomArray and AtomArrayStack to offer a few convenience
 for dealing with protein structures in an ML context.
 """
 
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import biotite.structure as bs
 import numpy as np
@@ -196,7 +196,7 @@ def create_complete_atom_array_from_aa_index(
 # TODO: add support for batched application of these functions (i.e. to multiple proteins at once)
 class Protein:
 
-    """A single protein chain.
+    """Base class for protein objects.
 
     N.B. whereas the underlying biotite atom array exposes atom-level annotations,
     this class exposes residue level annotations.
@@ -219,11 +219,13 @@ class Protein:
         """
         self.backbone_only = backbone_only
         atoms = atoms[filter_amino_acids(atoms)]
-        assert np.unique(atoms.chain_id).size == 1, "Only a single chain is supported"
         self.atoms, self._residue_starts = self.standardise_atoms(
             atoms, verbose=verbose, backbone_only=backbone_only
         )
         self._standardised = True
+
+    def to_complex(self):
+        return ProteinComplex.from_atoms(self.atoms)
 
     @staticmethod
     def set_atom_annotations(atoms, residue_starts):
@@ -266,6 +268,7 @@ class Protein:
         if residue_starts is None:
             residue_starts = get_residue_starts(atoms)
 
+        # TODO: order chains alphabetically.
         atoms = Protein.set_atom_annotations(atoms, residue_starts)
         # first we get an array of atom indices for each residue (i.e. a mapping from atom37 index to expected index
         # then we index into this array to get the expected index for each atom
@@ -363,10 +366,6 @@ class Protein:
         return new_atom_array, full_residue_starts
 
     @property
-    def chain_id(self):
-        return self.atoms.chain_id[0]
-
-    @property
     def residue_index(self):
         return self.atoms["residue_index"][self._residue_starts]
 
@@ -458,18 +457,24 @@ class Protein:
     def distances(
         self,
         atom_names: Union[str, List[str]],
+        residue_mask_from: Optional[np.ndarray] = None,
+        residue_mask_to: Optional[np.ndarray] = None,
         nan_fill=None,
         multi_atom_calc_type: str = "max",
     ) -> np.ndarray:
         # TODO: handle nans
+        if residue_mask_from is None:
+            residue_mask_from = np.ones(self.num_residues, dtype=bool)
+        if residue_mask_to is None:
+            residue_mask_to = np.ones(self.num_residues, dtype=bool)
         backbone_coords = self.backbone_coords()
         if atom_names in BACKBONE_ATOMS:
             at_index = BACKBONE_ATOMS.index(atom_names)
             dists = np.sqrt(
                 np.sum(
                     (
-                        backbone_coords[None, :, at_index, :]
-                        - backbone_coords[:, None, at_index, :]
+                        backbone_coords[None, residue_mask_from, at_index, :]
+                        - backbone_coords[residue_mask_to, None, at_index, :]
                     )
                     ** 2,
                     axis=-1,
@@ -493,3 +498,88 @@ class Protein:
 
     def contacts(self, atom_name: str = "CA", threshold: float = 8.0) -> np.ndarray:
         return self.distances(atom_name, nan_fill="max") < threshold
+
+    def get_chain(self, chain_id: str):
+        chain_filter = self.atoms.chain_id == chain_id
+        return ProteinChain(self.atoms[chain_filter].copy())
+
+
+class ProteinChain(Protein):
+
+    """A single protein chain."""
+
+    def __init__(
+        self,
+        atoms: bs.AtomArray,
+        verbose: bool = False,
+        backbone_only: bool = False,
+    ):
+        """
+        Parameters
+        ----------
+        atoms : AtomArray
+            The atoms of the protein.
+        """
+        super().__init__(atoms, verbose=verbose, backbone_only=backbone_only)
+        assert (
+            np.unique(atoms.chain_id).size == 1
+        ), "Only a single chain is supported by `Protein` objects. Consider using a different feature type."
+
+    @property
+    def chain_id(self):
+        return self.atoms.chain_id[0]
+
+
+class ProteinComplex(Protein):
+    """A protein complex."""
+
+    def __init__(self, proteins: List[ProteinChain]):
+        self._chain_ids = [prot.chain_id for prot in proteins]
+        self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
+        self.atoms = sum([prot.atoms for prot in proteins], bs.AtomArray())
+
+    @classmethod
+    def from_atoms(cls, atoms: bs.AtomArray) -> "ProteinComplex":
+        # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        chain_ids = sorted(np.unique(atoms.chain_id))
+        return cls(
+            [ProteinChain(atoms[atoms.chain_id == chain_id]) for chain_id in chain_ids]
+        )
+
+    @property
+    def get_chain(self, chain_id: str) -> Protein:
+        return self._proteins_lookup[chain_id]
+
+    def interface(
+        self,
+        atom_names: Union[str, List[str]] = "CA",
+        chain_pair: Optional[Tuple[str, str]] = None,
+        threshold: float = 10.0,
+        nan_fill: Optional[Union[float, str]] = None,
+    ) -> "ProteinComplex":
+        distances = self.interface_distances(
+            atom_names=atom_names, chain_pair=chain_pair, nan_fill=nan_fill
+        )
+        interface_mask = distances < threshold
+        return ProteinComplex.from_atoms(self.atoms[interface_mask])
+
+    def interface_distances(
+        self,
+        atom_names: Union[str, List[str]] = "CA",
+        chain_pair: Optional[Tuple[str, str]] = None,
+        nan_fill: Optional[Union[float, str]] = None,
+    ) -> np.ndarray:
+        if chain_pair is None:
+            if len(self._chain_ids) != 2:
+                raise ValueError(
+                    "chain_pair must be specified for non-binary complexes"
+                )
+            chain_pair = (self._chain_ids[0], self._chain_ids[1])
+        residue_mask_from = self.atoms.chain_id == chain_pair[0]
+        residue_mask_to = self.atoms.chain_id == chain_pair[1]
+        return self.distances(
+            atom_names=atom_names,
+            residue_mask_from=residue_mask_from,
+            residue_mask_to=residue_mask_to,
+            nan_fill=nan_fill,
+        )

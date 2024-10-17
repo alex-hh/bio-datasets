@@ -68,7 +68,7 @@ print(dataset.info.features)
 {'name': Value(dtype='string', id=None), 'structure': ProteinStructureFeature(with_box=False, with_bonds=False, with_occupancy=False, with_b_factor=False, with_res_id=False, with_atom_id=False, with_charge=False, with_element=False, with_ins_code=False, with_hetero=False, requires_encoding=True, requires_decoding=True, decode=True, id=None, encode_with_foldcomp=False)}
 ```
 
-To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances.
+To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when bio_datasets is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format) fields when not.
 
 We can also inspect the raw data format used for storage by discarding the feature information:
 
@@ -92,7 +92,9 @@ This feature configuration is performed by creating a `datasets.Features` object
 
 Each Feature type supports various configuration options (see details in \__init__ methods) controlling the formats in which data is stored and loaded.
 
-For example, using a [generator-based Dataset constructor]():
+<!-- https://huggingface.co/docs/datasets/v3.0.1/en/audio_dataset#create-a-dataset-builder-class -->
+<!-- https://huggingface.co/docs/datasets/en/about_dataset_load#datasets-datasetbuilder -->
+For example, using a generator-based Dataset constructor:
 
 ```python
 from datasets import Dataset, Features
