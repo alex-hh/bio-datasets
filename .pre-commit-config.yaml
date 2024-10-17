@@ -10,16 +10,16 @@ repos:
     rev: 22.10.0
     hooks:
       - id: black
-        exclude: '^data'
+        exclude: '^data|.*\.pdb$'
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
       - id: check-yaml
-        exclude: '^data'
+        exclude: '^data|.*\.pdb$'
       - id: end-of-file-fixer
-        exclude: '^data'
+        exclude: '^data|.*\.pdb$'
       - id: trailing-whitespace
-        exclude: '^data'
+        exclude: '^data|.*\.pdb$'
         # exclude: '^data|^scripts/gvp'
   # - repo: https://github.com/PyCQA/flake8
   #   rev: 4.0.1
