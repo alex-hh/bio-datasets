@@ -15,6 +15,7 @@ requires-python = ">=3.7"
 biotite = ">=1.0.0"
 foldcomp = ">=0.0.7"
 datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes"}
+nerfax = {git = "https://github.com/PeptoneLtd/nerfax.git"}
 
 [tool.poetry.source]
 name = "pypi"
