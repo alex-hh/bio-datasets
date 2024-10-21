@@ -280,7 +280,7 @@ class Protein:
             assert (
                 "element" in atoms._annot
             ), "Elements must be present to exclude hydrogens"
-            atoms = atoms[atoms.element != "H"]
+            atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
         else:
             raise ValueError("Hydrogens are not supported in standardisation")
         if residue_starts is None:
