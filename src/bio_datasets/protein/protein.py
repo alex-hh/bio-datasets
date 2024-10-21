@@ -394,6 +394,12 @@ class Protein:
                 new_atom_array.chain_id.dtype
             ),
         )
+        new_atom_array.set_annotation(
+            "ins_code",
+            atoms.ins_code[residue_starts][new_atom_array.residue_index].astype(
+                new_atom_array.ins_code.dtype
+            ),
+        )
 
         new_atom_array.set_annotation(
             "atom37_index",

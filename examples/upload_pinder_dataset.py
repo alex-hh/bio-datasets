@@ -145,7 +145,6 @@ def get_subject_positions_in_ref_masks(
     # align_sequences aligns a subject to a reference
     # then returns the alignable parts of the sequences together with their numbering
     subj_resid_map, alns = _align_and_map_sequences(ref_info, subj_info)
-
     # Need to remove ref residues in order to match subject
     ref_structure, _, _ = ref_info
     subj_structure, _, _ = subj_info
@@ -168,6 +167,12 @@ def get_subject_positions_in_ref_masks(
         for subj_id, ref_id in subj_resid_map.items()
         if subj_id not in subj_resid_seq_match_map
     }
+
+    # uncomment to debug
+    # for subj_id, ref_id in subj_resid_mutation_map.items():
+    #     atoms = subj_structure[subj_structure.res_id == subj_id]
+    #     ref_atoms = ref_structure[ref_structure.res_id == ref_id]
+    #     assert len(atoms) == len(ref_atoms), f"{atoms} != {ref_atoms} {ref_atoms.ins_code}"
 
     # values are positions in ref that subject aligns to and has matching sequence
     subj_mask_in_ref = mask_from_res_list(
@@ -365,9 +370,9 @@ class PinderDataset:
             "holo_ligand": holo_ligand,
         }
 
-    def __getitem__(self, idx):
-        row = self.index.iloc[idx]
-        metadata = self.metadata[self.metadata["id"] == row["id"]].iloc[0]
+    def _get_item_from_id(self, id):
+        row = self.index[self.index["id"] == id].iloc[0]
+        metadata = self.metadata[self.metadata["id"] == id].iloc[0]
         # n.b. PinderSystem will automatically download if entry can't be found locally
         # TODO: if necessary, renumber reference ids to always be contiguous (before alignment)
         # TODO: check whether paths exist and sleep if not (prevent parsing error due to truncated file download...)
@@ -402,7 +407,7 @@ class PinderDataset:
                 for res_id in structures["ligand_resids_with_uniprot_mapping"]
             ],
             dtype="uint16",
-        )[:, None]
+        )
         structures["receptor_uniprot_accession"] = system.entry.uniprot_R
         structures["ligand_uniprot_accession"] = system.entry.uniprot_L
         # TODO: get metadata
@@ -423,7 +428,13 @@ class PinderDataset:
             "ECOD_names_L",
         ]:
             structures[metadata_key] = metadata[metadata_key]
+        structures["id"] = row["id"]
+        structures["pdb_id"] = row["pdb_id"]
         return structures
+
+    def __getitem__(self, idx):
+        id = self.index.iloc[idx]["id"]
+        return self._get_item_from_id(id)
 
 
 @contextlib.contextmanager
@@ -515,8 +526,10 @@ if __name__ == "__main__":
             "ligand_uniprot_seq": Value("string"),
             # TODO: switch to array1d when following issue fixed:
             # https://github.com/huggingface/datasets/issues/7243
-            "receptor_uniprot_resids_with_structure": Sequence(Value("uint16")),
-            "ligand_uniprot_resids_with_structure": Sequence(Value("uint16")),
+            "receptor_resids_with_uniprot_mapping": Sequence(Value("uint16")),
+            "receptor_mapped_uniprot_resids": Sequence(Value("uint16")),
+            "ligand_resids_with_uniprot_mapping": Sequence(Value("uint16")),
+            "ligand_mapped_uniprot_resids": Sequence(Value("uint16")),
             # metadata
             "oligomeric_count": Value("uint16"),
             "resolution": Value("float16"),
