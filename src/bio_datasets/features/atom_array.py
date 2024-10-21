@@ -36,6 +36,7 @@ from bio_datasets.protein import constants as protein_constants
 from bio_datasets.protein.protein import (
     BACKBONE_ATOMS,
     Protein,
+    ProteinChain,
     ProteinComplex,
     create_complete_atom_array_from_aa_index,
     filter_backbone,
@@ -875,7 +876,7 @@ class ProteinStructureFeature(StructureFeature):
 
     def decode_example(
         self, encoded: dict, token_per_repo_id=None
-    ) -> Union["Protein", "ProteinComplex"]:
+    ) -> Union["ProteinChain", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         # TODO: check this always excludes hetatms
         # TODO: filter amino acids in encode_example also where possible
@@ -886,7 +887,7 @@ class ProteinStructureFeature(StructureFeature):
                 not self.drop_sidechains
             ), "Cannot drop sidechains for multi-chain proteins."
             return ProteinComplex.from_atoms(atoms)
-        return Protein(atoms, backbone_only=self.drop_sidechains)
+        return ProteinChain(atoms, backbone_only=self.drop_sidechains)
 
 
 @dataclass
@@ -935,7 +936,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             value = value[~np.isin(value.element, ["H", "D"])]
             # TODO: check this always excludes hetatms
             return super().encode_example(value[filter_amino_acids(value)])
-        if isinstance(value, (Protein, ProteinComplex)):
+        if isinstance(value, Protein):
             if self.drop_sidechains:
                 value = value.backbone()
             return super().encode_example(value.atoms)
@@ -943,7 +944,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
 
     def decode_example(
         self, encoded: dict, token_per_repo_id=None
-    ) -> Union["Protein", "ProteinComplex"]:
+    ) -> Union["ProteinChain", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         atoms = atoms[filter_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
@@ -952,4 +953,4 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 not self.drop_sidechains
             ), "Cannot drop sidechains for multi-chain proteins."
             return ProteinComplex.from_atoms(atoms)
-        return Protein(atoms, backbone_only=self.drop_sidechains)
+        return ProteinChain(atoms, backbone_only=self.drop_sidechains)
