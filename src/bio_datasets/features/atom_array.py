@@ -865,6 +865,8 @@ class ProteinStructureFeature(StructureFeature):
         self, encoded: dict, token_per_repo_id=None
     ) -> Union["Protein", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
+        # TODO: check this always excludes hetatms
+        # TODO: filter amino acids in encode_example also where possible
         atoms = atoms[filter_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
@@ -907,6 +909,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         if isinstance(value, bs.AtomArray):
             if self.drop_sidechains:
                 value = value[filter_backbone(value)]
+            # TODO: check this always excludes hetatms
             return super().encode_example(value[filter_amino_acids(value)])
         if isinstance(value, (Protein, ProteinComplex)):
             if self.drop_sidechains:

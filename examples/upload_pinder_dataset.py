@@ -369,6 +369,7 @@ class PinderDataset:
         metadata = self.metadata[self.metadata["id"] == row["id"]].iloc[0]
         # n.b. PinderSystem will automatically download if entry can't be found locally
         # TODO: if necessary, renumber reference ids to always be contiguous (before alignment)
+        # TODO: check whether paths exist and sleep if not (prevent parsing error due to truncated file download...)
         system = PinderSystem(
             entry=IndexEntry(**row.to_dict()), dataset_path=self.dataset_path
         )
