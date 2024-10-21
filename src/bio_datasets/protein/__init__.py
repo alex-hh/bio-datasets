@@ -1,2 +1,1 @@
-from .complex import ProteinComplex
-from .protein import Protein
+from .protein import Protein, ProteinChain, ProteinComplex

@@ -599,7 +599,9 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
 
-    def decode_example(self, value: dict, token_per_repo_id=None) -> "bs.AtomArray":
+    def decode_example(
+        self, value: dict, token_per_repo_id=None
+    ) -> Union["bs.AtomArray", None]:
         """
         def add_annotation(self, category, dtype):
         Add an annotation category, if not already existing.
@@ -635,6 +637,8 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                 f"Cannot cast '{str(category)}' "
                 f"with dtype '{self._annot[str(category)].dtype}' into '{dtype}'"
         """
+        if not isinstance(value["coords"], (np.ndarray, list)):
+            return None
         # TODO: null check
         # TODO: optimise this...if we set format to numpy, everything is a numpy array which should be ideal
         num_atoms = len(value["coords"])
@@ -769,7 +773,9 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
                 f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
             )
 
-    def decode_example(self, value: dict, token_per_repo_id=None) -> "bs.AtomArray":
+    def decode_example(
+        self, value: dict, token_per_repo_id=None
+    ) -> Union["bs.AtomArray", None]:
         """Decode example structure file into AtomArray data.
 
         Args:
@@ -876,8 +882,10 @@ class ProteinStructureFeature(StructureFeature):
 
     def decode_example(
         self, encoded: dict, token_per_repo_id=None
-    ) -> Union["ProteinChain", "ProteinComplex"]:
+    ) -> Union["ProteinChain", "ProteinComplex", None]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
+        if atoms is None:
+            return None
         # TODO: check this always excludes hetatms
         # TODO: filter amino acids in encode_example also where possible
         atoms = atoms[filter_amino_acids(atoms)]
@@ -944,8 +952,10 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
 
     def decode_example(
         self, encoded: dict, token_per_repo_id=None
-    ) -> Union["ProteinChain", "ProteinComplex"]:
+    ) -> Union["ProteinChain", "ProteinComplex", None]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
+        if atoms is None:
+            return None
         atoms = atoms[filter_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
