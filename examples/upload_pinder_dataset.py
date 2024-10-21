@@ -15,20 +15,11 @@ https://github.com/pinder-org/pinder/blob/9c70a92119b844d0d20e35f483b4f1f26b2899
 
 Q: what is difference between create_complex and create_masked_bound_unbound_complexes?
 
-N.B. can use PinderSystem.download_entry to download files for single system.
-
-Oligomeric state of the protein complex (homodimer, heterodimer, oligomer or higher-order complexes)
-Structure determination method (X-Ray, CryoEM, NMR)
-Resolution
-Interfacial gaps, defined as structurally-unresolved segments on PPI interfaces
-Number of distinct atom types. Many earlier Cryo-EM structures contain only a few atom-types such as only Cα or backbone atoms
-Whether the interface is likely to be a physiological or crystal contact, annotated using Prodigy
-Structural elongation, defined as the maximum variance of coordinates projected onto the largest principal component. This allows detection of long end-to-end stacked complexes, likely to be repetitive with small interfaces
-Planarity, defined as deviation of interfacial Cα atoms from the fitted plane. This interface characteristic quantifies interfacial shape complementarity. Transient complexes have smaller and more planar interfaces than permanent and structural scaffold complexes
-Number of components, defined as the number of connected components of a 10Å Cα radius graph. This allows detection of structurally discontinuous domains
-Intermolecular contacts (labeled as polar or apolar)
 """
 import argparse
+import contextlib
+import io
+import logging
 import pathlib
 from typing import List, Optional
 
@@ -36,7 +27,6 @@ import biotite.sequence.align as align
 import numpy as np
 import tqdm
 from biotite import structure as bs
-from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Dataset, Features, Value
 from pinder.core import PinderSystem, get_index, get_metadata
 from pinder.core.index.utils import IndexEntry
@@ -284,65 +274,86 @@ class PinderDataset:
         has_apo = system.entry.apo_R and system.entry.apo_L
         has_pred = system.entry.predicted_R and system.entry.predicted_L
 
+        native_R = system.native_R.filter("hetero", [False])
+        native_L = system.native_L.filter("hetero", [False])
+        native_R_at, _ = Protein.standardise_atoms(native_R.atom_array, drop_oxt=True)
+        native_L_at, _ = Protein.standardise_atoms(native_L.atom_array, drop_oxt=True)
+        native_R.atom_array = native_R_at
+        native_L.atom_array = native_L_at
+        holo_receptor = system.holo_receptor.filter("hetero", [False])
+        holo_ligand = system.holo_ligand.filter("hetero", [False])
         # apo_complex = system.create_apo_complex() - this superimposes structures, which gives info away about interaction
         # https://github.com/pinder-org/pinder/blob/8ad1ead7a174736635c13fa7266d9ca54cf9f44e/examples/pinder-system.ipynb
         if has_apo:
             apo_R, apo_L = system.apo_receptor, system.apo_ligand
+            apo_R = apo_R.filter("hetero", [False])
+            apo_L = apo_L.filter("hetero", [False])
         else:
             apo_R, apo_L = None, None
         if has_pred:
             pred_R, pred_L = system.pred_receptor, system.pred_ligand
+            pred_R = pred_R.filter("hetero", [False])
+            pred_L = pred_L.filter("hetero", [False])
         else:
             pred_R, pred_L = None, None
 
         if apo_R is not None:
-            native_R, apo_R = self.get_aligned_structures(
-                system.native_R,
+            # only change to native R is standardise atoms - already called above so should do nothing
+            native_R_v1, apo_R = self.get_aligned_structures(
+                native_R,
                 apo_R,
                 mode="ref",
             )
-            native_L, apo_L = self.get_aligned_structures(
-                system.native_L,
+            native_L_v1, apo_L = self.get_aligned_structures(
+                native_L,
                 apo_L,
                 mode="ref",
             )
-        else:
-            native_R, native_L = None, None
+            assert len(native_R_v1.atom_array) == len(
+                native_R.atom_array
+            ), f"{len(native_R_v1.atom_array)} != {len(native_R.atom_array)}"
+            assert len(native_L_v1.atom_array) == len(
+                native_L.atom_array
+            ), f"{len(native_L_v1.atom_array)} != {len(native_L.atom_array)}"
 
         if pred_R is not None:
-            native_R, pred_R = self.get_aligned_structures(
-                system.native_R,
+            _, pred_R = self.get_aligned_structures(
+                native_R,
                 pred_R,
                 mode="ref",
             )
-            native_L, pred_L = self.get_aligned_structures(
-                system.native_L,
+            _, pred_L = self.get_aligned_structures(
+                native_L,
                 pred_L,
                 mode="ref",
             )
 
-        holo_receptor_at = system.holo_receptor.atom_array.copy()
-        holo_ligand_at = system.holo_ligand.atom_array.copy()
-        holo_receptor_at, _ = Protein.standardise_atoms(holo_receptor_at)
-        holo_ligand_at, _ = Protein.standardise_atoms(holo_ligand_at)
+        holo_receptor_at = holo_receptor.atom_array.copy()
+        holo_ligand_at = holo_ligand.atom_array.copy()
+        holo_receptor_at, _ = Protein.standardise_atoms(holo_receptor_at, drop_oxt=True)
+        holo_ligand_at, _ = Protein.standardise_atoms(holo_ligand_at, drop_oxt=True)
         holo_receptor = Structure(
-            filepath=system.holo_receptor.filepath,
-            uniprot_map=system.holo_receptor.uniprot_map,
-            pinder_id=system.holo_receptor.pinder_id,
+            filepath=holo_receptor.filepath,
+            uniprot_map=holo_receptor.uniprot_map,
+            pinder_id=holo_receptor.pinder_id,
             atom_array=holo_receptor_at,
-            pdb_engine=system.holo_receptor.pdb_engine,
+            pdb_engine=holo_receptor.pdb_engine,
         )
         holo_ligand = Structure(
-            filepath=system.holo_ligand.filepath,
-            uniprot_map=system.holo_ligand.uniprot_map,
-            pinder_id=system.holo_ligand.pinder_id,
+            filepath=holo_ligand.filepath,
+            uniprot_map=holo_ligand.uniprot_map,
+            pinder_id=holo_ligand.pinder_id,
             atom_array=holo_ligand_at,
-            pdb_engine=system.holo_ligand.pdb_engine,
+            pdb_engine=holo_ligand.pdb_engine,
         )
         native = native_R + native_L
         # TODO: add uniprot seq and mapping to native
-        assert len(holo_receptor_at) == len(native_R.atom_array)
-        assert len(holo_ligand_at) == len(native_L.atom_array)
+        assert len(holo_receptor_at) == len(
+            native_R.atom_array
+        ), f"{len(holo_receptor_at)} != {len(native_R.atom_array)}"
+        assert len(holo_ligand_at) == len(
+            native_L.atom_array
+        ), f"{len(holo_ligand_at)} != {len(native_L.atom_array)}"
         return {
             "complex": native,
             "apo_receptor": apo_R,
@@ -410,11 +421,30 @@ class PinderDataset:
         return structures
 
 
+@contextlib.contextmanager
+def suppress_output():
+    # Suppress stdout and stderr
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+        io.StringIO()
+    ):
+        # Disable logging temporarily
+        logging.disable(logging.CRITICAL)
+        try:
+            yield
+        finally:
+            # Re-enable logging
+            logging.disable(logging.NOTSET)
+
+
 def examples_generator(index, metadata, dataset_path):
     ds = PinderDataset(index, metadata, dataset_path=dataset_path)
     for i in tqdm.tqdm(range(len(ds))):
-        print(f"GETTING ITEM {i}")
-        ex = ds[i]
+        try:
+            with suppress_output():
+                ex = ds[i]
+        except Exception as e:
+            print(f"Error getting example {index.iloc[i]['id']}")
+            raise e
         ex["complex"] = ex["complex"].atom_array
         ex["apo_receptor"] = (
             ex["apo_receptor"].atom_array if ex["apo_receptor"] is not None else None
@@ -503,6 +533,8 @@ if __name__ == "__main__":
     )
     # TODO: does this memmap? do I need to use GeneratorBasedBuilder explicitly?
     # to do full set, i can just do this in a loop with memory control.
+
+    # TODO: implement sharding and num_proc
     dataset = Dataset.from_generator(
         examples_generator,
         features=features,
