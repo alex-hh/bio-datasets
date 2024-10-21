@@ -50,7 +50,7 @@ from pinder.core.structure.atoms import (
     mask_from_res_list,
 )
 
-from bio_datasets import ProteinStructureFeature
+from bio_datasets import Protein, ProteinStructureFeature
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -169,13 +169,18 @@ def get_subject_positions_in_ref_masks(
 
 
 class PinderDataset:
+
+    """Class to handle aligning of apo sequences to complex and standardisation of structures.
+
+    We use sequence alignment because then the atom types will be the same.
+    """
+
     def __init__(
         self,
         index,
         metadata,
         download: bool = False,
         dataset_path: Optional[str] = None,
-        remove_differing_atoms: bool = True,
     ):
         self.index = index
         self.metadata = metadata
@@ -183,7 +188,6 @@ class PinderDataset:
         self.dataset_path = (
             pathlib.Path(dataset_path) if dataset_path is not None else None
         )
-        self.remove_differing_atoms = remove_differing_atoms
 
     def get_aligned_structures(
         self,
@@ -202,21 +206,24 @@ class PinderDataset:
         assert len(set(ref_chains)) == 1
 
         ref_at = ref_struct.atom_array.copy()
+        ref_at, _ = Protein.standardise_atoms(ref_at)
         target_at = target_struct.atom_array.copy()
+        target_at, _ = Protein.standardise_atoms(target_at)
 
         if mode == "ref":
-            # We drop any ref residues that aren't present in the target.
+            # We drop any target residues or atoms that aren't present in the reference.
             subj_mask_in_ref, subj_mask = get_subject_positions_in_ref_masks(
                 ref_at, target_at
             )
+            # TODO: add assert that mapped positions agree
 
             # the below also automatically handles renumbering.
             aligned_target_at = ref_at.copy()
             # We'll assume that the sequence is the same at positions that don't align, so only coords need to be masked
-            aligned_target_at[~subj_mask_in_ref].coord = np.nan
+            aligned_target_at.coord[~subj_mask_in_ref] = np.nan
             if "b_factor" in ref_at._annot:
-                aligned_target_at[~subj_mask_in_ref].b_factor = np.nan
-            aligned_target_at[subj_mask_in_ref].coord = target_at[subj_mask].coord
+                aligned_target_at.b_factor[~subj_mask_in_ref] = np.nan
+            aligned_target_at.coord[subj_mask_in_ref] = target_at[subj_mask].coord
             target_at = aligned_target_at
 
         elif mode == "intersection":
@@ -244,38 +251,6 @@ class PinderDataset:
 
         return ref_struct, target_struct
 
-    def _make_atoms_consistent(self, ref_struct, *structs):
-        # An atom is defined as existent in the second array, if there is an
-        # atom in the second array that has the same annotation values in all
-        # categories that exists in both arrays.
-
-        # So pinder handles this by first modifying annotations to match,
-        # then applying the atom mask, then optionally preserving the modified annotations.
-
-        # It's clear that we don't need to preserve matched b_factors, for example.
-        # although this does require care when applying filter_intersection downstream.
-
-        # Even if atom counts are identical, annotation categories must be the same
-        # First modify annotation arrays to use struc.filter_intersection,
-        # then filter original structure with annotations to match res_id, res_name, atom_name
-        # of intersecting structure
-        ref_at_mod = ref_struct.atom_array.copy()
-        target_at_mods = []
-        ref_target_mask = np.ones(len(ref_at_mod), dtype=bool)
-        for struct in structs:
-            target_at_mod = struct.atom_array.copy()
-            ref_target_mask &= bs.filter_intersection(ref_at_mod, target_at_mod)
-            target_at_mods.append(target_at_mod)
-            # just get rid of any annotations that don't match
-            ref_at_mod, target_at_mod = surgery.fix_annotation_mismatch(
-                ref_at_mod, target_at_mod, ["element", "ins_code", "b_factor"]
-            )
-
-        ref_struct.atom_array = ref_struct.atom_array[ref_target_mask]
-        for target_at_mod, struct in zip(target_at_mods, structs):
-            target_ref_mask = bs.filter_intersection(target_at_mod, ref_at_mod)
-            struct.atom_array = struct.atom_array[target_ref_mask].copy()
-
     def make_structures(self, system: PinderSystem):
         """We have to choose which reference to align to: choices are complex, apo (unbound) or predicted (unbound).
 
@@ -296,45 +271,61 @@ class PinderDataset:
             pred_R, pred_L = None, None
 
         if apo_R is not None:
-            _, apo_R = self.get_aligned_structures(
+            native_R, apo_R = self.get_aligned_structures(
                 system.native_R,
                 apo_R,
                 mode="ref",
             )
-            _, apo_L = self.get_aligned_structures(
+            native_L, apo_L = self.get_aligned_structures(
                 system.native_L,
                 apo_L,
                 mode="ref",
             )
+        else:
+            native_R, native_L = None, None
 
         if pred_R is not None:
-            _, pred_R = self.get_aligned_structures(
+            native_R, pred_R = self.get_aligned_structures(
                 system.native_R,
                 pred_R,
                 mode="ref",
             )
-            _, pred_L = self.get_aligned_structures(
+            native_L, pred_L = self.get_aligned_structures(
                 system.native_L,
                 pred_L,
                 mode="ref",
             )
 
-        if self.remove_differing_atoms:
-            self._make_atoms_consistent(system.native_R, system.apo_R, system.pred_R)
-            self._make_atoms_consistent(system.native_L, system.apo_L, system.pred_L)
-
-        native = system.native_R + system.native_L
+        holo_receptor_at = system.holo_receptor.atom_array.copy()
+        holo_ligand_at = system.holo_ligand.atom_array.copy()
+        holo_receptor_at, _ = Protein.standardise_atoms(holo_receptor_at)
+        holo_ligand_at, _ = Protein.standardise_atoms(holo_ligand_at)
+        holo_receptor = Structure(
+            filepath=system.holo_receptor.filepath,
+            uniprot_map=system.holo_receptor.uniprot_map,
+            pinder_id=system.holo_receptor.pinder_id,
+            atom_array=holo_receptor_at,
+            pdb_engine=system.holo_receptor.pdb_engine,
+        )
+        holo_ligand = Structure(
+            filepath=system.holo_ligand.filepath,
+            uniprot_map=system.holo_ligand.uniprot_map,
+            pinder_id=system.holo_ligand.pinder_id,
+            atom_array=holo_ligand_at,
+            pdb_engine=system.holo_ligand.pdb_engine,
+        )
+        native = native_R + native_L
         # TODO: add uniprot seq and mapping to native
-        assert len(system.holo_receptor.atom_array) == len(system.native_R.atom_array)
-        assert len(system.holo_ligand.atom_array) == len(system.native_L.atom_array)
+        assert len(holo_receptor_at) == len(native_R.atom_array)
+        assert len(holo_ligand_at) == len(native_L.atom_array)
         return {
             "complex": native,
             "apo_receptor": apo_R,
             "apo_ligand": apo_L,
             "pred_receptor": pred_R,
             "pred_ligand": pred_L,
-            "holo_receptor": system.holo_receptor,
-            "holo_ligand": system.holo_ligand,
+            "holo_receptor": holo_receptor,
+            "holo_ligand": holo_ligand,
         }
 
     def __getitem__(self, idx):
@@ -354,15 +345,18 @@ class PinderDataset:
         else:
             uniprot_seq_L = None
         structures = self.make_structures(system)
-        receptor_res_starts = get_residue_starts(system.holo_receptor.atom_array)
-        ligand_res_starts = get_residue_starts(system.holo_ligand.atom_array)
+        holo_receptor = structures.pop("holo_receptor")
+        holo_ligand = structures.pop("holo_ligand")
+        receptor_res_starts = get_residue_starts(holo_receptor.atom_array)
+        ligand_res_starts = get_residue_starts(holo_ligand.atom_array)
+
         structures["receptor_uniprot_resids"] = [
-            structures.pop("holo_receptor").resolved_pdb2uniprot[res_id]
-            for res_id in system.holo_receptor.atom_array[receptor_res_starts].res_id
+            holo_receptor.resolved_pdb2uniprot[res_id] - 1
+            for res_id in holo_receptor.atom_array[receptor_res_starts].res_id
         ]
         structures["ligand_uniprot_resids"] = [
-            structures.pop("holo_ligand").resolved_pdb2uniprot[res_id]
-            for res_id in system.holo_ligand.atom_array[ligand_res_starts].res_id
+            holo_ligand.resolved_pdb2uniprot[res_id] - 1
+            for res_id in holo_ligand.atom_array[ligand_res_starts].res_id
         ]
         structures["receptor_uniprot_accession"] = system.entry.uniprot_R
         structures["ligand_uniprot_accession"] = system.entry.uniprot_L
@@ -374,7 +368,7 @@ class PinderDataset:
             "cluster_id_R",
             "cluster_id_L",
         ]:
-            structures[key] = metadata[key]
+            structures[key] = row[key]
         for metadata_key in [
             "method",
             "resolution",
