@@ -162,9 +162,30 @@ def get_subject_positions_in_ref_masks(
     assert isinstance(ref_structure, (bs.AtomArray, bs.AtomArrayStack))
     assert isinstance(subj_structure, (bs.AtomArray, bs.AtomArrayStack))
 
-    # values are positions in ref that subject aligns to
-    subj_mask_in_ref = mask_from_res_list(ref_structure, list(subj_resid_map.values()))
-    subj_mask = mask_from_res_list(subj_structure, list(subj_resid_map.keys()))
+    ref_ids, ref_residues = bs.get_residues(ref_structure)
+    subj_ids, subj_residues = bs.get_residues(subj_structure)
+    # identify residues with sequence match
+    subj_resid_seq_match_map = {
+        subj_id: ref_id
+        for subj_id, ref_id in subj_resid_map.items()
+        if subj_residues[list(subj_ids).index(subj_id)]
+        == ref_residues[list(ref_ids).index(ref_id)]
+    }
+
+    subj_resid_mutation_map = {
+        subj_id: ref_id
+        for subj_id, ref_id in subj_resid_map.items()
+        if subj_id not in subj_resid_seq_match_map
+    }
+
+    # values are positions in ref that subject aligns to and has matching sequence
+    subj_mask_in_ref = mask_from_res_list(
+        ref_structure, list(subj_resid_seq_match_map.values())
+    )
+    subj_mask = mask_from_res_list(
+        subj_structure, list(subj_resid_seq_match_map.keys())
+    )
+    # TODO: we could include backbone at aligned but non-identical positions
     return subj_mask_in_ref, subj_mask
 
 
@@ -214,7 +235,7 @@ class PinderDataset:
         target_at, _ = Protein.standardise_atoms(target_at, drop_oxt=True)
 
         if mode == "ref":
-            # We drop any target residues or atoms that aren't present in the reference.
+            # We drop any target residues that aren't present in the reference.
             subj_mask_in_ref, subj_mask = get_subject_positions_in_ref_masks(
                 ref_at, target_at
             )
@@ -232,6 +253,7 @@ class PinderDataset:
         elif mode == "intersection":
             # handles masking and renumbering
             ref_at, target_at = _get_seq_aligned_structures(ref_at, target_at)
+            raise NotImplementedError("TODO: standardise atoms")
 
         else:
             raise ValueError(f"Invalid mode: {mode}")
@@ -350,16 +372,20 @@ class PinderDataset:
         structures = self.make_structures(system)
         holo_receptor = structures.pop("holo_receptor")
         holo_ligand = structures.pop("holo_ligand")
-        receptor_res_starts = get_residue_starts(holo_receptor.atom_array)
-        ligand_res_starts = get_residue_starts(holo_ligand.atom_array)
 
-        structures["receptor_uniprot_resids"] = [
-            holo_receptor.resolved_pdb2uniprot[res_id] - 1
-            for res_id in holo_receptor.atom_array[receptor_res_starts].res_id
+        structures["receptor_resids_with_uniprot_mapping"] = list(
+            sorted(list(holo_receptor.resolved_pdb2uniprot.keys()))
+        )
+        structures["receptor_mapped_uniprot_resids"] = [
+            holo_receptor.resolved_pdb2uniprot[res_id]
+            for res_id in structures["receptor_resids_with_uniprot_mapping"]
         ]
-        structures["ligand_uniprot_resids"] = [
-            holo_ligand.resolved_pdb2uniprot[res_id] - 1
-            for res_id in holo_ligand.atom_array[ligand_res_starts].res_id
+        structures["ligand_resids_with_uniprot_mapping"] = list(
+            sorted(list(holo_ligand.resolved_pdb2uniprot.keys()))
+        )
+        structures["ligand_mapped_uniprot_resids"] = [
+            holo_ligand.resolved_pdb2uniprot[res_id]
+            for res_id in structures["ligand_resids_with_uniprot_mapping"]
         ]
         structures["receptor_uniprot_accession"] = system.entry.uniprot_R
         structures["ligand_uniprot_accession"] = system.entry.uniprot_L

@@ -186,6 +186,9 @@ def create_complete_atom_array_from_aa_index(
     )
     new_atom_array.set_annotation("residue_index", residue_index)
     new_atom_array.set_annotation("res_id", residue_index + 1)
+    new_atom_array.set_annotation(
+        "element", np.char.array(new_atom_array.atom_name).astype("U1")
+    )
     full_annot_names += ["atom_name", "aa_index", "res_name", "residue_index", "res_id"]
     if extra_fields is not None:
         for f in extra_fields:
@@ -212,6 +215,7 @@ class Protein:
         atoms: bs.AtomArray,
         verbose: bool = False,
         backbone_only: bool = False,
+        exclude_hydrogens: bool = True,
     ):
         """
         Parameters
@@ -222,7 +226,10 @@ class Protein:
         self.backbone_only = backbone_only
         atoms = atoms[filter_amino_acids(atoms)]
         self.atoms, self._residue_starts = self.standardise_atoms(
-            atoms, verbose=verbose, backbone_only=backbone_only
+            atoms,
+            verbose=verbose,
+            backbone_only=backbone_only,
+            exclude_hydrogens=exclude_hydrogens,
         )
         self._standardised = True
 
@@ -256,6 +263,7 @@ class Protein:
         verbose: bool = False,
         backbone_only: bool = False,
         drop_oxt: bool = False,
+        exclude_hydrogens: bool = True,
     ):
         """We want all atoms to be present, with nan coords if any are missing.
 
@@ -268,6 +276,13 @@ class Protein:
         This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
         and `to_atom37` can be applied safely downstream.
         """
+        if exclude_hydrogens:
+            assert (
+                "element" in atoms._annot
+            ), "Elements must be present to exclude hydrogens"
+            atoms = atoms[atoms.element != "H"]
+        else:
+            raise ValueError("Hydrogens are not supported in standardisation")
         if residue_starts is None:
             residue_starts = get_residue_starts(atoms)
 
