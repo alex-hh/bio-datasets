@@ -21,13 +21,14 @@ import contextlib
 import io
 import logging
 import pathlib
+import tempfile
 from typing import List, Optional
 
 import biotite.sequence.align as align
 import numpy as np
 import tqdm
 from biotite import structure as bs
-from datasets import Array1D, Dataset, Features, Value
+from datasets import Dataset, Features, Sequence, Value
 from pinder.core import PinderSystem, get_index, get_metadata
 from pinder.core.index.utils import IndexEntry
 from pinder.core.loader.structure import Structure
@@ -395,10 +396,13 @@ class PinderDataset:
         structures["ligand_resids_with_uniprot_mapping"] = list(
             sorted(list(holo_ligand.resolved_pdb2uniprot.keys()))
         )
-        structures["ligand_mapped_uniprot_resids"] = [
-            holo_ligand.resolved_pdb2uniprot[res_id]
-            for res_id in structures["ligand_resids_with_uniprot_mapping"]
-        ]
+        structures["ligand_mapped_uniprot_resids"] = np.array(
+            [
+                holo_ligand.resolved_pdb2uniprot[res_id]
+                for res_id in structures["ligand_resids_with_uniprot_mapping"]
+            ],
+            dtype="uint16",
+        )[:, None]
         structures["receptor_uniprot_accession"] = system.entry.uniprot_R
         structures["ligand_uniprot_accession"] = system.entry.uniprot_L
         # TODO: get metadata
@@ -437,9 +441,13 @@ def suppress_output():
             logging.disable(logging.NOTSET)
 
 
-def examples_generator(index, metadata, dataset_path):
+def examples_generator(
+    index, metadata, dataset_path, max_examples: Optional[int] = None
+):
     ds = PinderDataset(index, metadata, dataset_path=dataset_path)
     for i in tqdm.tqdm(range(len(ds))):
+        if max_examples is not None and i >= max_examples:
+            break
         try:
             with suppress_output():
                 ex = ds[i]
@@ -469,6 +477,7 @@ if __name__ == "__main__":
     parser.add_argument("--keep_representatives_only", action="store_true")
     parser.add_argument("--system_ids", type=List[str], default=None)
     parser.add_argument("--dataset_path", type=str, default=None)
+    parser.add_argument("--max_examples", type=int, default=None)
     args = parser.parse_args()
 
     index = get_index()
@@ -491,7 +500,7 @@ if __name__ == "__main__":
 
     # TODO: decide on appropriate metadata (probably most of stuff from metadata...)
     features = Features(
-        {
+        **{
             "id": Value("string"),
             "cluster_id": Value("string"),
             "pdb_id": Value("string"),
@@ -504,8 +513,10 @@ if __name__ == "__main__":
             "ligand_uniprot_id": Value("string"),
             "receptor_uniprot_seq": Value("string"),
             "ligand_uniprot_seq": Value("string"),
-            "receptor_uniprot_resids_with_structure": Array1D((None,), "uint16"),
-            "ligand_uniprot_resids_with_structure": Array1D((None,), "uint16"),
+            # TODO: switch to array1d when following issue fixed:
+            # https://github.com/huggingface/datasets/issues/7243
+            "receptor_uniprot_resids_with_structure": Sequence(Value("uint16")),
+            "ligand_uniprot_resids_with_structure": Sequence(Value("uint16")),
             # metadata
             "oligomeric_count": Value("uint16"),
             "resolution": Value("float16"),
@@ -536,18 +547,21 @@ if __name__ == "__main__":
     # to do full set, i can just do this in a loop with memory control.
 
     # TODO: implement sharding and num_proc
-    dataset = Dataset.from_generator(
-        examples_generator,
-        features=features,
-        gen_kwargs={
-            "index": index,
-            "metadata": metadata,
-            "dataset_path": args.dataset_path,
-        },
-    )
-    dataset.push_to_hub(
-        "graph-transformers/pinder",
-        split=args.subset
-        if args.split == "test" and args.subset is not None
-        else args.split,
-    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dataset = Dataset.from_generator(
+            examples_generator,
+            features=features,
+            gen_kwargs={
+                "index": index,
+                "metadata": metadata,
+                "dataset_path": args.dataset_path,
+                "max_examples": args.max_examples,
+            },
+            cache_dir=temp_dir,
+        )
+        dataset.push_to_hub(
+            "graph-transformers/pinder",
+            split=args.subset
+            if args.split == "test" and args.subset is not None
+            else args.split,
+        )
