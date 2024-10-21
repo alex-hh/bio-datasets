@@ -255,6 +255,7 @@ class Protein:
         residue_starts: Optional[np.ndarray] = None,
         verbose: bool = False,
         backbone_only: bool = False,
+        drop_oxt: bool = False,
     ):
         """We want all atoms to be present, with nan coords if any are missing.
 
@@ -284,11 +285,15 @@ class Protein:
             atoms, final_residue_in_chain, residue_starts
         )
         oxt_mask = (atoms.atom_name == "OXT") & final_residue_in_chain
-        if np.any(oxt_mask):
+        if np.any(oxt_mask) and not drop_oxt:
             expected_relative_atom_indices[oxt_mask] = (
                 ATOM37_TO_RELATIVE_ATOM_INDEX_MAPPING[atoms.aa_index[oxt_mask]].max()
                 + 1
             )
+        elif drop_oxt:
+            atoms = atoms[~oxt_mask]
+            expected_relative_atom_indices = expected_relative_atom_indices[~oxt_mask]
+            oxt_mask = np.zeros(len(atoms), dtype=bool)
         unexpected_atom_mask = expected_relative_atom_indices == -100
         if np.any(unexpected_atom_mask):
             unexpected_atoms = atoms.atom_name[unexpected_atom_mask]

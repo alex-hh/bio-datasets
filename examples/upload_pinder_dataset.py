@@ -209,9 +209,9 @@ class PinderDataset:
         assert len(set(ref_chains)) == 1
 
         ref_at = ref_struct.atom_array.copy()
-        ref_at, _ = Protein.standardise_atoms(ref_at)
+        ref_at, _ = Protein.standardise_atoms(ref_at, drop_oxt=True)
         target_at = target_struct.atom_array.copy()
-        target_at, _ = Protein.standardise_atoms(target_at)
+        target_at, _ = Protein.standardise_atoms(target_at, drop_oxt=True)
 
         if mode == "ref":
             # We drop any target residues or atoms that aren't present in the reference.
@@ -384,6 +384,27 @@ class PinderDataset:
         return structures
 
 
+def examples_generator(index, metadata, dataset_path):
+    ds = PinderDataset(index, metadata, dataset_path=dataset_path)
+    for i in tqdm.tqdm(range(len(ds))):
+        print(f"GETTING ITEM {i}")
+        ex = ds[i]
+        ex["complex"] = ex["complex"].atom_array
+        ex["apo_receptor"] = (
+            ex["apo_receptor"].atom_array if ex["apo_receptor"] is not None else None
+        )
+        ex["apo_ligand"] = (
+            ex["apo_ligand"].atom_array if ex["apo_ligand"] is not None else None
+        )
+        ex["pred_receptor"] = (
+            ex["pred_receptor"].atom_array if ex["pred_receptor"] is not None else None
+        )
+        ex["pred_ligand"] = (
+            ex["pred_ligand"].atom_array if ex["pred_ligand"] is not None else None
+        )
+        yield ex
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--subset", type=str, default=None)
@@ -457,10 +478,12 @@ if __name__ == "__main__":
     # TODO: does this memmap? do I need to use GeneratorBasedBuilder explicitly?
     # to do full set, i can just do this in a loop with memory control.
     dataset = Dataset.from_generator(
-        tqdm.tqdm,
+        examples_generator,
         features=features,
         gen_kwargs={
-            "iterable": PinderDataset(index, metadata, dataset_path=args.dataset_path)
+            "index": index,
+            "metadata": metadata,
+            "dataset_path": args.dataset_path,
         },
     )
     dataset.push_to_hub(
