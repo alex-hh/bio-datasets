@@ -28,7 +28,7 @@ import biotite.sequence.align as align
 import numpy as np
 import tqdm
 from biotite import structure as bs
-from datasets import Dataset, Features, Sequence, Value
+from datasets import Dataset, Features, NamedSplit, Sequence, Value
 from pinder.core import PinderSystem, get_index, get_metadata
 from pinder.core.index.utils import IndexEntry
 from pinder.core.loader.structure import Structure
@@ -498,11 +498,21 @@ if __name__ == "__main__":
         index = index[index["id"].isin(args.system_ids)]
     else:
         if args.subset is not None:
-            assert args.split == "test"
-            index = index[(index[f"{args.subset}"]) & (index["split"] == args.split)]
+            if args.subset == "cluster_representatives":
+                assert args.split == "train"
+                index = (
+                    index[index["split"] == args.split].groupby("cluster_id").head(1)
+                )
+                split = "cluster_representatives_train"
+            else:
+                assert args.split == "test"
+                index = index[
+                    (index[f"{args.subset}"]) & (index["split"] == args.split)
+                ]
+                split = args.subset
         else:
             index = index[index["split"] == args.split]
-
+            split = args.split
         if args.keep_representatives_only:
             index = index.groupby("cluster_id").head(1)
 
@@ -530,30 +540,11 @@ if __name__ == "__main__":
             "receptor_mapped_uniprot_resids": Sequence(Value("uint16")),
             "ligand_resids_with_uniprot_mapping": Sequence(Value("uint16")),
             "ligand_mapped_uniprot_resids": Sequence(Value("uint16")),
-            # metadata
+            # selected metadata: anything else can be obtained from the pinder metadata file.
             "oligomeric_count": Value("uint16"),
             "resolution": Value("float16"),
             "probability": Value("float16"),
             "method": Value("string"),
-            # "chain_1": Value("string"),
-            # "chain_2": Value("string"),
-            # "assembly": Value("uint8"),
-            # "asym_id_1": Value("string"),
-            # "asym_id_2": Value("string"),
-            # "ECOD_names_R": Array1D(Value("string")),
-            # "ECOD_names_L": Array1D(Value("string")),
-            # "link_density": Value("float16"),
-            # "planarity": Value("float16"),
-            # "n_residue_pairs": Value("uint16"),
-            # "n_residues": Value("uint16"),
-            # "buried_sasa": Value("float16"),
-            # "intermolecular_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
-            # "charged_charged_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
-            # "charged_polar_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
-            # "charged_apolar_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
-            # "polar_polar_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
-            # "apolar_polar_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
-            # "apolar_apolar_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
         }
     )
     # TODO: does this memmap? do I need to use GeneratorBasedBuilder explicitly?
@@ -570,11 +561,10 @@ if __name__ == "__main__":
                 "dataset_path": args.dataset_path,
                 "max_examples": args.max_examples,
             },
+            split=NamedSplit(split),
             cache_dir=temp_dir,
         )
         dataset.push_to_hub(
             "graph-transformers/pinder",
-            split=args.subset
-            if args.split == "test" and args.subset is not None
-            else args.split,
+            split=split,
         )

@@ -33,7 +33,7 @@ import os
 from typing import Optional
 
 import foldcomp
-from datasets import Dataset, Features, Value
+from datasets import Dataset, Features, NamedSplit, Value
 
 from bio_datasets.features import ProteinAtomArrayFeature, ProteinStructureFeature
 
