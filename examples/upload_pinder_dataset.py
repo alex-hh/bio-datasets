@@ -509,8 +509,8 @@ if __name__ == "__main__":
             "apo_ligand": ProteinAtomArrayFeature(),
             "pred_receptor": ProteinAtomArrayFeature(),
             "pred_ligand": ProteinAtomArrayFeature(),
-            "receptor_uniprot_id": Value("string"),
-            "ligand_uniprot_id": Value("string"),
+            "receptor_uniprot_accession": Value("string"),
+            "ligand_uniprot_accession": Value("string"),
             "receptor_uniprot_seq": Value("string"),
             "ligand_uniprot_seq": Value("string"),
             # TODO: switch to array1d when following issue fixed:

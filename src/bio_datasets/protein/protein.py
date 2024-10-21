@@ -5,12 +5,13 @@ We simply wrap Biotite's AtomArray and AtomArrayStack to offer a few convenience
 for dealing with protein structures in an ML context.
 """
 
+import io
 from typing import List, Optional, Tuple, Union
 
 import biotite.structure as bs
 import numpy as np
 from biotite.structure.filter import filter_amino_acids
-from biotite.structure.io import PDBFile
+from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
@@ -161,9 +162,15 @@ def create_complete_atom_array_from_aa_index(
 
     full_annot_names = []
     if isinstance(chain_id, str):
-        new_atom_array.chain_id = np.full(len(new_atom_array), chain_id)
+        new_atom_array.set_annotation(
+            "chain_id",
+            np.full(len(new_atom_array), chain_id, dtype=new_atom_array.chain_id.dtype),
+        )
     else:
-        new_atom_array.chain_id = chain_id[residue_index]
+        new_atom_array.set_annotation(
+            "chain_id",
+            chain_id[residue_index].astype(new_atom_array.chain_id.dtype),
+        )
     full_annot_names.append("chain_id")
 
     # final atom in chain is OXT
@@ -244,9 +251,17 @@ class Protein:
         return cls(atoms)
 
     def to_pdb(self, pdb_path: str):
+        # to write to pdb file, we have to drop nan coords
+        nan_mask = np.isnan(self.atoms.coord).any(axis=-1)
+        atoms = self.atoms[~nan_mask]
         pdbf = PDBFile()
-        pdbf.set_structure(self.atoms)
+        pdbf.set_structure(atoms)
         pdbf.write(pdb_path)
+
+    def to_pdb_string(self):
+        with io.StringIO() as f:
+            self.to_pdb(f)
+            return f.getvalue()
 
     @staticmethod
     def set_atom_annotations(atoms, residue_starts):
@@ -359,7 +374,7 @@ class Protein:
                 continue
             getattr(new_atom_array, annot_name)[
                 existing_atom_indices_in_full_array
-            ] = annot
+            ] = annot.astype(new_atom_array._annot[annot_name].dtype)
 
         # set_annotation vs setattr: set_annotation adds to annot and verifies size
         new_atom_array.coord[existing_atom_indices_in_full_array] = atoms.coord
@@ -368,11 +383,17 @@ class Protein:
             residue_starts
         ), f"Full residue starts: {full_residue_starts} and residue starts: {residue_starts} do not match"
         new_atom_array.set_annotation(
-            "res_id", atoms.res_id[residue_starts][new_atom_array.residue_index]
+            "res_id",
+            atoms.res_id[residue_starts][new_atom_array.residue_index].astype(
+                new_atom_array.res_id.dtype
+            ),
         )  # override with auth res id
-        new_atom_array.chain_id = atoms.chain_id[residue_starts][
-            new_atom_array.residue_index
-        ]
+        new_atom_array.set_annotation(
+            "chain_id",
+            atoms.chain_id[residue_starts][new_atom_array.residue_index].astype(
+                new_atom_array.chain_id.dtype
+            ),
+        )
 
         new_atom_array.set_annotation(
             "atom37_index",
@@ -575,7 +596,8 @@ class ProteinComplex(Protein):
     @property
     def atoms(self):
         return sum(
-            [prot.atoms for prot in self._proteins_lookup.values()], bs.AtomArray()
+            [prot.atoms for prot in self._proteins_lookup.values()],
+            bs.AtomArray(length=0),
         )
 
     @classmethod
