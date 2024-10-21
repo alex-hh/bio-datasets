@@ -250,10 +250,13 @@ class Protein:
         atoms = pdbf.get_structure()
         return cls(atoms)
 
+    @property
+    def nan_mask(self):
+        return np.isnan(self.atoms.coord).any(axis=-1)
+
     def to_pdb(self, pdb_path: str):
         # to write to pdb file, we have to drop nan coords
-        nan_mask = np.isnan(self.atoms.coord).any(axis=-1)
-        atoms = self.atoms[~nan_mask]
+        atoms = self.atoms[~self.nan_mask]
         pdbf = PDBFile()
         pdbf.set_structure(atoms)
         pdbf.write(pdb_path)
@@ -614,7 +617,6 @@ class ProteinComplex(Protein):
             [ProteinChain(atoms[atoms.chain_id == chain_id]) for chain_id in chain_ids]
         )
 
-    @property
     def get_chain(self, chain_id: str) -> Protein:
         return self._proteins_lookup[chain_id]
 
