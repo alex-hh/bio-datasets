@@ -34,13 +34,13 @@ from typing import List, Optional
 
 import biotite.sequence.align as align
 import numpy as np
+import tqdm
 from biotite import structure as bs
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Dataset, Features, Value
 from pinder.core import PinderSystem, get_index, get_metadata
 from pinder.core.index.utils import IndexEntry
 from pinder.core.loader.structure import Structure
-from pinder.core.structure import surgery
 from pinder.core.structure.atoms import (
     _align_and_map_sequences,
     _get_seq_aligned_structures,
@@ -50,7 +50,7 @@ from pinder.core.structure.atoms import (
     mask_from_res_list,
 )
 
-from bio_datasets import Protein, ProteinStructureFeature
+from bio_datasets import Protein, ProteinAtomArrayFeature
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -188,6 +188,9 @@ class PinderDataset:
         self.dataset_path = (
             pathlib.Path(dataset_path) if dataset_path is not None else None
         )
+
+    def __len__(self):
+        return len(self.index)
 
     def get_aligned_structures(
         self,
@@ -384,10 +387,10 @@ class PinderDataset:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--subset", type=str, default=None)
-    parser.add_argument("--split", type=str, default=None)
-    parser.add_argument("--max_length_monomer", type=int, default=None)
+    parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--keep_representatives_only", action="store_true")
     parser.add_argument("--system_ids", type=List[str], default=None)
+    parser.add_argument("--dataset_path", type=str, default=None)
     args = parser.parse_args()
 
     index = get_index()
@@ -397,14 +400,11 @@ if __name__ == "__main__":
         index = index[index["id"].isin(args.system_ids)]
     else:
         if args.subset is not None:
-            assert index["split"] == "test"
+            assert args.split == "test"
             index = index[(index[f"{args.subset}"]) & (index["split"] == args.split)]
         else:
             index = index[index["split"] == args.split]
-        index = index[
-            (index["length1"] <= args.max_length_monomer)
-            & (index["length2"] <= args.max_length_monomer)
-        ]
+
         if args.keep_representatives_only:
             index = index.groupby("cluster_id").head(1)
 
@@ -417,17 +417,17 @@ if __name__ == "__main__":
             "id": Value("string"),
             "cluster_id": Value("string"),
             "pdb_id": Value("string"),
-            "complex": ProteinStructureFeature(),
-            "apo_receptor": ProteinStructureFeature(),
-            "apo_ligand": ProteinStructureFeature(),
-            "pred_receptor": ProteinStructureFeature(),
-            "pred_ligand": ProteinStructureFeature(),
+            "complex": ProteinAtomArrayFeature(),
+            "apo_receptor": ProteinAtomArrayFeature(),
+            "apo_ligand": ProteinAtomArrayFeature(),
+            "pred_receptor": ProteinAtomArrayFeature(),
+            "pred_ligand": ProteinAtomArrayFeature(),
             "receptor_uniprot_id": Value("string"),
             "ligand_uniprot_id": Value("string"),
             "receptor_uniprot_seq": Value("string"),
             "ligand_uniprot_seq": Value("string"),
-            "receptor_uniprot_resids_with_structure": Array1D("uint16"),
-            "ligand_uniprot_resids_with_structure": Array1D("uint16"),
+            "receptor_uniprot_resids_with_structure": Array1D((None,), "uint16"),
+            "ligand_uniprot_resids_with_structure": Array1D((None,), "uint16"),
             # metadata
             "oligomeric_count": Value("uint16"),
             "resolution": Value("float16"),
@@ -457,7 +457,15 @@ if __name__ == "__main__":
     # TODO: does this memmap? do I need to use GeneratorBasedBuilder explicitly?
     # to do full set, i can just do this in a loop with memory control.
     dataset = Dataset.from_generator(
-        iter(PinderDataset(index, metadata, dataset_path=args.dataset_path)),
+        tqdm.tqdm,
         features=features,
+        gen_kwargs={
+            "iterable": PinderDataset(index, metadata, dataset_path=args.dataset_path)
+        },
     )
-    dataset.push_to_hub("graph-transformers/pinder")
+    dataset.push_to_hub(
+        "graph-transformers/pinder",
+        split=args.subset
+        if args.split == "test" and args.subset is not None
+        else args.split,
+    )

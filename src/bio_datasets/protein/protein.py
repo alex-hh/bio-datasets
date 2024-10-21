@@ -129,6 +129,7 @@ def create_complete_atom_array_from_aa_index(
     chain_id: Union[str, np.ndarray],
     extra_fields: Optional[List[str]] = None,
     backbone_only: bool = False,
+    add_oxt: bool = False,
 ):
     """
     Populate annotations from aa_index, assuming all atoms are present.
@@ -139,7 +140,7 @@ def create_complete_atom_array_from_aa_index(
         residue_sizes = RESIDUE_SIZES[
             aa_index
         ]  # (n_residues,) NOT (n_atoms,) -- add 1 to account for OXT
-    if isinstance(chain_id, str) and not backbone_only:
+    if isinstance(chain_id, str) and not backbone_only and add_oxt:
         residue_sizes[-1] += 1  # final OXT
     else:
         if not backbone_only:
@@ -147,7 +148,8 @@ def create_complete_atom_array_from_aa_index(
             final_residue_in_chain = chain_id != np.concatenate(
                 [chain_id[1:], ["ZZZZ"]]
             )
-            residue_sizes[final_residue_in_chain] += 1
+            if add_oxt:
+                residue_sizes[final_residue_in_chain] += 1
     residue_starts = np.concatenate(
         [[0], np.cumsum(residue_sizes)[:-1]]
     )  # (n_residues,)
@@ -166,7 +168,7 @@ def create_complete_atom_array_from_aa_index(
     # final atom in chain is OXT
     relative_atom_index = np.arange(len(new_atom_array)) - residue_starts[residue_index]
     atom_names = new_atom_array.atom_name
-    if not backbone_only:
+    if not backbone_only and add_oxt:
         oxt_mask = new_atom_array.chain_id != np.concatenate(
             [new_atom_array.chain_id[1:], ["ZZZZ"]]
         )
@@ -314,6 +316,7 @@ class Protein:
             atoms.aa_index[residue_starts],
             atoms.chain_id[residue_starts],
             extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
+            add_oxt=np.any(oxt_mask),
         )
         existing_atom_indices_in_full_array = (
             full_residue_starts[atoms.residue_index] + expected_relative_atom_indices
