@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Union
 import biotite.structure as bs
 import numpy as np
 from biotite.structure.filter import filter_amino_acids
+from biotite.structure.io import PDBFile
 from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
@@ -235,6 +236,17 @@ class Protein:
 
     def to_complex(self):
         return ProteinComplex.from_atoms(self.atoms)
+
+    @classmethod
+    def from_pdb(cls, pdb_path: str):
+        pdbf = PDBFile.read(pdb_path)
+        atoms = pdbf.get_structure()
+        return cls(atoms)
+
+    def to_pdb(self, pdb_path: str):
+        pdbf = PDBFile()
+        pdbf.set_structure(self.atoms)
+        pdbf.write(pdb_path)
 
     @staticmethod
     def set_atom_annotations(atoms, residue_starts):
