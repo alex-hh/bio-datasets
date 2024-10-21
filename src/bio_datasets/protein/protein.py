@@ -129,6 +129,7 @@ def create_complete_atom_array_from_aa_index(
     chain_id: Union[str, np.ndarray],
     extra_fields: Optional[List[str]] = None,
     backbone_only: bool = False,
+    add_oxt: bool = False,
 ):
     """
     Populate annotations from aa_index, assuming all atoms are present.
@@ -139,7 +140,7 @@ def create_complete_atom_array_from_aa_index(
         residue_sizes = RESIDUE_SIZES[
             aa_index
         ]  # (n_residues,) NOT (n_atoms,) -- add 1 to account for OXT
-    if isinstance(chain_id, str) and not backbone_only:
+    if isinstance(chain_id, str) and not backbone_only and add_oxt:
         residue_sizes[-1] += 1  # final OXT
     else:
         if not backbone_only:
@@ -147,7 +148,8 @@ def create_complete_atom_array_from_aa_index(
             final_residue_in_chain = chain_id != np.concatenate(
                 [chain_id[1:], ["ZZZZ"]]
             )
-            residue_sizes[final_residue_in_chain] += 1
+            if add_oxt:
+                residue_sizes[final_residue_in_chain] += 1
     residue_starts = np.concatenate(
         [[0], np.cumsum(residue_sizes)[:-1]]
     )  # (n_residues,)
@@ -166,7 +168,7 @@ def create_complete_atom_array_from_aa_index(
     # final atom in chain is OXT
     relative_atom_index = np.arange(len(new_atom_array)) - residue_starts[residue_index]
     atom_names = new_atom_array.atom_name
-    if not backbone_only:
+    if not backbone_only and add_oxt:
         oxt_mask = new_atom_array.chain_id != np.concatenate(
             [new_atom_array.chain_id[1:], ["ZZZZ"]]
         )
@@ -184,6 +186,9 @@ def create_complete_atom_array_from_aa_index(
     )
     new_atom_array.set_annotation("residue_index", residue_index)
     new_atom_array.set_annotation("res_id", residue_index + 1)
+    new_atom_array.set_annotation(
+        "element", np.char.array(new_atom_array.atom_name).astype("U1")
+    )
     full_annot_names += ["atom_name", "aa_index", "res_name", "residue_index", "res_id"]
     if extra_fields is not None:
         for f in extra_fields:
@@ -210,6 +215,7 @@ class Protein:
         atoms: bs.AtomArray,
         verbose: bool = False,
         backbone_only: bool = False,
+        exclude_hydrogens: bool = True,
     ):
         """
         Parameters
@@ -220,7 +226,10 @@ class Protein:
         self.backbone_only = backbone_only
         atoms = atoms[filter_amino_acids(atoms)]
         self.atoms, self._residue_starts = self.standardise_atoms(
-            atoms, verbose=verbose, backbone_only=backbone_only
+            atoms,
+            verbose=verbose,
+            backbone_only=backbone_only,
+            exclude_hydrogens=exclude_hydrogens,
         )
         self._standardised = True
 
@@ -253,6 +262,8 @@ class Protein:
         residue_starts: Optional[np.ndarray] = None,
         verbose: bool = False,
         backbone_only: bool = False,
+        drop_oxt: bool = False,
+        exclude_hydrogens: bool = True,
     ):
         """We want all atoms to be present, with nan coords if any are missing.
 
@@ -265,6 +276,13 @@ class Protein:
         This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
         and `to_atom37` can be applied safely downstream.
         """
+        if exclude_hydrogens:
+            assert (
+                "element" in atoms._annot
+            ), "Elements must be present to exclude hydrogens"
+            atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        else:
+            raise ValueError("Hydrogens are not supported in standardisation")
         if residue_starts is None:
             residue_starts = get_residue_starts(atoms)
 
@@ -282,11 +300,15 @@ class Protein:
             atoms, final_residue_in_chain, residue_starts
         )
         oxt_mask = (atoms.atom_name == "OXT") & final_residue_in_chain
-        if np.any(oxt_mask):
+        if np.any(oxt_mask) and not drop_oxt:
             expected_relative_atom_indices[oxt_mask] = (
                 ATOM37_TO_RELATIVE_ATOM_INDEX_MAPPING[atoms.aa_index[oxt_mask]].max()
                 + 1
             )
+        elif drop_oxt:
+            atoms = atoms[~oxt_mask]
+            expected_relative_atom_indices = expected_relative_atom_indices[~oxt_mask]
+            oxt_mask = np.zeros(len(atoms), dtype=bool)
         unexpected_atom_mask = expected_relative_atom_indices == -100
         if np.any(unexpected_atom_mask):
             unexpected_atoms = atoms.atom_name[unexpected_atom_mask]
@@ -314,6 +336,7 @@ class Protein:
             atoms.aa_index[residue_starts],
             atoms.chain_id[residue_starts],
             extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
+            add_oxt=np.any(oxt_mask),
         )
         existing_atom_indices_in_full_array = (
             full_residue_starts[atoms.residue_index] + expected_relative_atom_indices
@@ -536,7 +559,12 @@ class ProteinComplex(Protein):
     def __init__(self, proteins: List[ProteinChain]):
         self._chain_ids = [prot.chain_id for prot in proteins]
         self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
-        self.atoms = sum([prot.atoms for prot in proteins], bs.AtomArray())
+
+    @property
+    def atoms(self):
+        return sum(
+            [prot.atoms for prot in self._proteins_lookup.values()], bs.AtomArray()
+        )
 
     @classmethod
     def from_atoms(cls, atoms: bs.AtomArray) -> "ProteinComplex":

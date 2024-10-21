@@ -36,6 +36,7 @@ from bio_datasets.protein import constants as protein_constants
 from bio_datasets.protein.protein import (
     BACKBONE_ATOMS,
     Protein,
+    ProteinComplex,
     create_complete_atom_array_from_aa_index,
     filter_backbone,
     get_residue_starts_mask,
@@ -673,6 +674,8 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
             atoms.set_annotation("b_factor", value.pop("b_factor")[residue_index])
 
         atoms.coord = value.pop("coords")
+        if not self.with_element:
+            atoms.set_annotation("element", np.char.array(atoms.atom_name).astype("U1"))
         if "bond_edges" in value:
             bonds_array = value.pop("bond_edges")
             bond_types = value.pop("bond_types")
@@ -860,13 +863,40 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
 class ProteinStructureFeature(StructureFeature):
     _type: str = field(default="ProteinStructure", init=False, repr=False)
 
-    def decode_example(self, encoded: dict, token_per_repo_id=None) -> "Protein":
+    def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
+        if isinstance(value, bs.AtomArray):
+            value = value[filter_amino_acids(value)]
+            if "element" not in value._annot:
+                value.set_annotation(
+                    "element", np.char.array(value.atom_name).astype("U1")
+                )
+            value = value[~np.isin(value.element, ["H", "D"])]
+        return super().encode_example(value)
+
+    def decode_example(
+        self, encoded: dict, token_per_repo_id=None
+    ) -> Union["Protein", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
-        return Protein(atoms[filter_amino_acids(atoms)])
+        # TODO: check this always excludes hetatms
+        # TODO: filter amino acids in encode_example also where possible
+        atoms = atoms[filter_amino_acids(atoms)]
+        chain_ids = np.unique(atoms.chain_id)
+        if len(chain_ids) > 1:
+            assert (
+                not self.drop_sidechains
+            ), "Cannot drop sidechains for multi-chain proteins."
+            return ProteinComplex.from_atoms(atoms)
+        return Protein(atoms, backbone_only=self.drop_sidechains)
 
 
 @dataclass
 class ProteinAtomArrayFeature(AtomArrayFeature):
+
+    """Decodes to a `bio_datasets.protein.Protein` or `bio_datasets.protein.ProteinComplex` object.
+
+    These objects have standardised atoms (with nans for any missing atoms),
+    and are guaranteed to contain no HETATMs or hydrogens.
+    """
 
     all_atoms_present: bool = False
     drop_sidechains: bool = False
@@ -889,23 +919,37 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 **kwargs,
             )
         elif preset == "pdb":
-            return cls(with_b_factor=False, coords_dtype="float16", **kwargss)
+            return cls(with_b_factor=False, coords_dtype="float16", **kwargs)
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
     def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
+        # TODO: share this code
         if isinstance(value, bs.AtomArray):
             if self.drop_sidechains:
                 value = value[filter_backbone(value)]
+            if "element" not in value._annot:
+                value.set_annotation(
+                    "element", np.char.array(value.atom_name).astype("U1")
+                )
+            value = value[~np.isin(value.element, ["H", "D"])]
+            # TODO: check this always excludes hetatms
             return super().encode_example(value[filter_amino_acids(value)])
-        if isinstance(value, Protein):
+        if isinstance(value, (Protein, ProteinComplex)):
             if self.drop_sidechains:
                 value = value.backbone()
             return super().encode_example(value.atoms)
         return super().encode_example(value)
 
-    def decode_example(self, encoded: dict, token_per_repo_id=None) -> "Protein":
+    def decode_example(
+        self, encoded: dict, token_per_repo_id=None
+    ) -> Union["Protein", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
-        return Protein(
-            atoms[filter_amino_acids(atoms)], backbone_only=self.drop_sidechains
-        )
+        atoms = atoms[filter_amino_acids(atoms)]
+        chain_ids = np.unique(atoms.chain_id)
+        if len(chain_ids) > 1:
+            assert (
+                not self.drop_sidechains
+            ), "Cannot drop sidechains for multi-chain proteins."
+            return ProteinComplex.from_atoms(atoms)
+        return Protein(atoms, backbone_only=self.drop_sidechains)
