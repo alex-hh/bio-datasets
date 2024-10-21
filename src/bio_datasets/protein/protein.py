@@ -536,7 +536,12 @@ class ProteinComplex(Protein):
     def __init__(self, proteins: List[ProteinChain]):
         self._chain_ids = [prot.chain_id for prot in proteins]
         self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
-        self.atoms = sum([prot.atoms for prot in proteins], bs.AtomArray())
+
+    @property
+    def atoms(self):
+        return sum(
+            [prot.atoms for prot in self._proteins_lookup.values()], bs.AtomArray()
+        )
 
     @classmethod
     def from_atoms(cls, atoms: bs.AtomArray) -> "ProteinComplex":

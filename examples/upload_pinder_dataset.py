@@ -454,6 +454,10 @@ if __name__ == "__main__":
             # "apolar_apolar_contacts": Value("uint16"),  # total number of pair residues with any atom within a %A distance cutoff
         }
     )
+    # TODO: does this memmap? do I need to use GeneratorBasedBuilder explicitly?
+    # to do full set, i can just do this in a loop with memory control.
     dataset = Dataset.from_generator(
-        iter(PinderDataset(index, metadata, download=args.download)), features=features
+        iter(PinderDataset(index, metadata, dataset_path=args.dataset_path)),
+        features=features,
     )
+    dataset.push_to_hub("graph-transformers/pinder")

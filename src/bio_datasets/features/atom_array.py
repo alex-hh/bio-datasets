@@ -36,6 +36,7 @@ from bio_datasets.protein import constants as protein_constants
 from bio_datasets.protein.protein import (
     BACKBONE_ATOMS,
     Protein,
+    ProteinComplex,
     create_complete_atom_array_from_aa_index,
     filter_backbone,
     get_residue_starts_mask,
@@ -860,9 +861,18 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
 class ProteinStructureFeature(StructureFeature):
     _type: str = field(default="ProteinStructure", init=False, repr=False)
 
-    def decode_example(self, encoded: dict, token_per_repo_id=None) -> "Protein":
+    def decode_example(
+        self, encoded: dict, token_per_repo_id=None
+    ) -> Union["Protein", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
-        return Protein(atoms[filter_amino_acids(atoms)])
+        atoms = atoms[filter_amino_acids(atoms)]
+        chain_ids = np.unique(atoms.chain_id)
+        if len(chain_ids) > 1:
+            assert (
+                not self.drop_sidechains
+            ), "Cannot drop sidechains for multi-chain proteins."
+            return ProteinComplex.from_atoms(atoms)
+        return Protein(atoms, backbone_only=self.drop_sidechains)
 
 
 @dataclass
@@ -898,14 +908,21 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             if self.drop_sidechains:
                 value = value[filter_backbone(value)]
             return super().encode_example(value[filter_amino_acids(value)])
-        if isinstance(value, Protein):
+        if isinstance(value, (Protein, ProteinComplex)):
             if self.drop_sidechains:
                 value = value.backbone()
             return super().encode_example(value.atoms)
         return super().encode_example(value)
 
-    def decode_example(self, encoded: dict, token_per_repo_id=None) -> "Protein":
+    def decode_example(
+        self, encoded: dict, token_per_repo_id=None
+    ) -> Union["Protein", "ProteinComplex"]:
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
-        return Protein(
-            atoms[filter_amino_acids(atoms)], backbone_only=self.drop_sidechains
-        )
+        atoms = atoms[filter_amino_acids(atoms)]
+        chain_ids = np.unique(atoms.chain_id)
+        if len(chain_ids) > 1:
+            assert (
+                not self.drop_sidechains
+            ), "Cannot drop sidechains for multi-chain proteins."
+            return ProteinComplex.from_atoms(atoms)
+        return Protein(atoms, backbone_only=self.drop_sidechains)
