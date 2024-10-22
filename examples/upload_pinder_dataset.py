@@ -20,12 +20,14 @@ import argparse
 import contextlib
 import io
 import logging
+import math
 import pathlib
 import tempfile
 from typing import List, Optional
 
 import biotite.sequence.align as align
 import numpy as np
+import pandas as pd
 import tqdm
 from biotite import structure as bs
 from datasets import Dataset, Features, NamedSplit, Sequence, Value
@@ -453,32 +455,41 @@ def suppress_output():
 
 
 def examples_generator(
-    index, metadata, dataset_path, max_examples: Optional[int] = None
+    index: List[pd.DataFrame],
+    metadata: pd.DataFrame,
+    dataset_path: str,
+    max_examples: Optional[int] = None,
 ):
-    ds = PinderDataset(index, metadata, dataset_path=dataset_path)
-    for i in tqdm.tqdm(range(len(ds))):
-        if max_examples is not None and i >= max_examples:
-            break
-        try:
-            with suppress_output():
-                ex = ds[i]
-        except Exception as e:
-            print(f"Error getting example {index.iloc[i]['id']}")
-            raise e
-        ex["complex"] = ex["complex"].atom_array
-        ex["apo_receptor"] = (
-            ex["apo_receptor"].atom_array if ex["apo_receptor"] is not None else None
-        )
-        ex["apo_ligand"] = (
-            ex["apo_ligand"].atom_array if ex["apo_ligand"] is not None else None
-        )
-        ex["pred_receptor"] = (
-            ex["pred_receptor"].atom_array if ex["pred_receptor"] is not None else None
-        )
-        ex["pred_ligand"] = (
-            ex["pred_ligand"].atom_array if ex["pred_ligand"] is not None else None
-        )
-        yield ex
+    for index_df in index:
+        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path)
+        print(f"Dataset length: {len(ds)}")
+        for i in tqdm.tqdm(range(len(ds))):
+            if max_examples is not None and i >= max_examples:
+                break
+            try:
+                with suppress_output():
+                    ex = ds[i]
+            except Exception as e:
+                print(f"Error getting example {index_df.iloc[i]['id']}")
+                raise e
+            ex["complex"] = ex["complex"].atom_array
+            ex["apo_receptor"] = (
+                ex["apo_receptor"].atom_array
+                if ex["apo_receptor"] is not None
+                else None
+            )
+            ex["apo_ligand"] = (
+                ex["apo_ligand"].atom_array if ex["apo_ligand"] is not None else None
+            )
+            ex["pred_receptor"] = (
+                ex["pred_receptor"].atom_array
+                if ex["pred_receptor"] is not None
+                else None
+            )
+            ex["pred_ligand"] = (
+                ex["pred_ligand"].atom_array if ex["pred_ligand"] is not None else None
+            )
+            yield ex
 
 
 if __name__ == "__main__":
@@ -489,6 +500,7 @@ if __name__ == "__main__":
     parser.add_argument("--system_ids", type=List[str], default=None)
     parser.add_argument("--dataset_path", type=str, default=None)
     parser.add_argument("--max_examples", type=int, default=None)
+    parser.add_argument("--num_proc", type=int, default=None)
     args = parser.parse_args()
 
     index = get_index()
@@ -551,18 +563,28 @@ if __name__ == "__main__":
     # to do full set, i can just do this in a loop with memory control.
 
     # TODO: implement sharding and num_proc
+    print(f"Index length: {len(index)} metadata length: {len(metadata)}")
     with tempfile.TemporaryDirectory() as temp_dir:
+        if args.num_proc is None:
+            index_list = [index]
+        else:
+            shard_size = math.ceil(len(index) / args.num_proc)
+            index_list = [
+                index.iloc[i : i + shard_size] for i in range(0, len(index), shard_size)
+            ]
+        print(f"Index list length: {len(index_list)} {[len(df) for df in index_list]}")
         dataset = Dataset.from_generator(
             examples_generator,
             features=features,
             gen_kwargs={
-                "index": index,
+                "index": index_list,
                 "metadata": metadata,
                 "dataset_path": args.dataset_path,
                 "max_examples": args.max_examples,
             },
             split=NamedSplit(split),
             cache_dir=temp_dir,
+            num_proc=args.num_proc,
         )
         dataset.push_to_hub(
             "graph-transformers/pinder",

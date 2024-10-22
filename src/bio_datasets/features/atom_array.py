@@ -531,7 +531,10 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                     )
             else:
                 residue_starts = get_residue_starts(value)
-            if len(value) > 65535:
+            # if len(value) > 65535:
+            #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
+            if len(residue_starts) > 65535:
+                # print(len(residue_starts))
                 raise ValueError(
                     "AtomArray too large to fit in uint16 (residue starts)"
                 )
