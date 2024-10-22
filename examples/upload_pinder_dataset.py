@@ -21,6 +21,7 @@ import contextlib
 import io
 import logging
 import math
+import os
 import pathlib
 import tempfile
 from typing import List, Optional
@@ -198,12 +199,12 @@ class PinderDataset:
         self,
         index,
         metadata,
-        download: bool = False,
+        cleanup: bool = False,
         dataset_path: Optional[str] = None,
     ):
         self.index = index
         self.metadata = metadata
-        self.download = download
+        self.cleanup = cleanup
         self.dataset_path = (
             pathlib.Path(dataset_path) if dataset_path is not None else None
         )
@@ -305,7 +306,7 @@ class PinderDataset:
         else:
             pred_R, pred_L = None, None
 
-        if apo_R is not None:
+        if has_apo:
             # only change to native R is standardise atoms - already called above so should do nothing
             native_R_v1, apo_R = self.get_aligned_structures(
                 native_R,
@@ -324,7 +325,7 @@ class PinderDataset:
                 native_L.atom_array
             ), f"{len(native_L_v1.atom_array)} != {len(native_L.atom_array)}"
 
-        if pred_R is not None:
+        if has_pred:
             _, pred_R = self.get_aligned_structures(
                 native_R,
                 pred_R,
@@ -354,6 +355,18 @@ class PinderDataset:
             atom_array=holo_ligand_at,
             pdb_engine=holo_ligand.pdb_engine,
         )
+        if self.cleanup:
+            os.remove(native_L.filepath)
+            os.remove(holo_receptor.filepath)
+            os.remove(holo_ligand.filepath)
+            if has_apo:
+                os.remove(apo_R.filepath)
+                if apo_L.filepath != apo_R.filepath:
+                    os.remove(apo_L.filepath)
+            if has_pred:
+                os.remove(pred_R.filepath)
+                if pred_L.filepath != pred_R.filepath:
+                    os.remove(pred_L.filepath)
         native = native_R + native_L
         # TODO: add uniprot seq and mapping to native
         assert len(holo_receptor_at) == len(
@@ -461,9 +474,9 @@ def examples_generator(
     max_examples: Optional[int] = None,
 ):
     for index_df in index:
-        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path)
+        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path, cleanup=True)
         print(f"Dataset length: {len(ds)}")
-        for i in tqdm.tqdm(range(len(ds))):
+        for i in tqdm.tqdm(range(len(ds)), disable=len(index) > 1):
             if max_examples is not None and i >= max_examples:
                 break
             try:
