@@ -280,8 +280,11 @@ class PinderDataset:
 
         Bound makes most sense I think.
         """
+        # TODO: we could save apo even if only one chain is present
         has_apo = system.entry.apo_R and system.entry.apo_L
+        apo_count = int(system.entry.apo_R) + int(system.entry.apo_L)
         has_pred = system.entry.predicted_R and system.entry.predicted_L
+        pred_count = int(system.entry.predicted_R) + int(system.entry.predicted_L)
 
         native_R = system.native_R.filter("hetero", [False])
         native_L = system.native_L.filter("hetero", [False])
@@ -359,13 +362,15 @@ class PinderDataset:
             os.remove(native_L.filepath)
             os.remove(holo_receptor.filepath)
             os.remove(holo_ligand.filepath)
-            if has_apo:
-                os.remove(apo_R.filepath)
-                if apo_L.filepath != apo_R.filepath:
+            if apo_count > 0:
+                if apo_R is not None:
+                    os.remove(apo_R.filepath)
+                if apo_L is not None and apo_L.filepath != apo_R.filepath:
                     os.remove(apo_L.filepath)
-            if has_pred:
-                os.remove(pred_R.filepath)
-                if pred_L.filepath != pred_R.filepath:
+            if pred_count > 0:
+                if pred_R is not None:
+                    os.remove(pred_R.filepath)
+                if pred_L is not None and pred_L.filepath != pred_R.filepath:
                     os.remove(pred_L.filepath)
         native = native_R + native_L
         # TODO: add uniprot seq and mapping to native
