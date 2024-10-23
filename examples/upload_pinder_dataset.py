@@ -24,7 +24,7 @@ import math
 import os
 import pathlib
 import tempfile
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import biotite.sequence.align as align
 import numpy as np
@@ -32,6 +32,53 @@ import pandas as pd
 import tqdm
 from biotite import structure as bs
 from datasets import Dataset, Features, NamedSplit, Sequence, Value
+from google.cloud.storage import Blob
+from pinder.core.utils import cloud as pinder_cloud_utils
+
+UPLOAD = "upload_from_filename"
+DOWNLOAD = "download_to_filename"
+
+
+def process_many(
+    path_pairs: List[Tuple[str, Blob]],
+    method: str,
+    global_timeout: int = 600,
+    timeout: Tuple[int, int] = (10, 320),
+    retries: int = 5,
+    threads: int = 4,
+) -> None:
+    f"""Serial version of process_many.
+
+    Parameters
+    ----------
+    path_pairs : list
+        tuples of (path_str, Blob)
+    method : str
+        "{UPLOAD}" | "{DOWNLOAD}"
+    global_timeout : int=600
+        timeout to wait for all operations to complete
+    timeout : tuple, default=(5, 120)
+        timeout forwarded to Blob method
+    retries : int, default=5
+        how many times to attempt the method
+    threads : int, default=4
+        how many threads to use in the thread pool
+    """
+    if not len(path_pairs):
+        return
+    if method not in pinder_cloud_utils.BLOB_ACTIONS:
+        raise Exception(f"{method=} not in {pinder_cloud_utils.BLOB_ACTIONS=}")
+    for path, blob in path_pairs:
+        pinder_cloud_utils.retry_blob_method(
+            blob,
+            method,
+            path,
+            retries=retries,
+            timeout=timeout,
+        )
+
+
+pinder_cloud_utils.process_many = process_many
 from pinder.core import PinderSystem, get_index, get_metadata
 from pinder.core.index.utils import IndexEntry
 from pinder.core.loader.structure import Structure

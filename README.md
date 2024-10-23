@@ -19,7 +19,7 @@ The main formats we support for storing and loading protein data are:
 
 | Feature name |   Storage format    |  Loaded as  |
 | ------------ | --------------------| ------------|
-|  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (bio_datasets classes are lightweight wrappers around `AtomArray`)|
+|  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
 |  StructureFeature / ProteinStructureFeature   | byte string encoded file format embedded into parquet columns: PDB / compressed PDB (gzip / foldcomp fcz) | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
 
 
@@ -123,7 +123,7 @@ In this case the unprocessed data for the 'structure' column is passed as a pyth
 ### Performance tips: choose Feature types to trade off between efficiency of storage and loading
 
 `bio_datasets.StructureFeature` feature data is stored internally
-or as PDB format byte-strings (optionally compressed with foldcomp or gzip). bio_datasets automatically handles conversion from this format to the
+as PDB format byte-strings (optionally compressed with foldcomp or gzip). bio_datasets automatically handles conversion from this format to the
 biotite AtomArray format for downstream processing.
 Of course, parsing the PDB format to biotite format involves some overhead (though it's
 still possible to iterate over ~100 pdb files a second; and we'll automatically load files
