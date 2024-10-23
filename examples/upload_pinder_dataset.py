@@ -480,7 +480,9 @@ def examples_generator(
     cleanup: bool = False,
 ):
     for index_df in index:
-        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path, cleanup=cleanup)
+        ds = PinderDataset(
+            index_df, metadata, dataset_path=dataset_path, cleanup=cleanup
+        )
         print(f"Dataset length: {len(ds)}")
         for i in tqdm.tqdm(range(len(ds)), disable=len(index) > 1):
             if max_examples is not None and i >= max_examples:
