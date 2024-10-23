@@ -19,8 +19,8 @@ The main formats we support for storing and loading protein data are:
 
 | Feature name |   Storage format    |  Loaded as  |
 | ------------ | --------------------| ------------|
-|  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.Protein` (lightweight wrapper around `AtomArray`)|
-|  StructureFeature / ProteinStructureFeature   | byte string encoded file format embedded into parquet columns: PDB / compressed PDB (gzip / foldcomp fcz) | `biotite.sturcture.AtomArray` / `bio_datasets.Protein` |
+|  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (bio_datasets classes are lightweight wrappers around `AtomArray`)|
+|  StructureFeature / ProteinStructureFeature   | byte string encoded file format embedded into parquet columns: PDB / compressed PDB (gzip / foldcomp fcz) | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
 
 
 ## Installation
@@ -53,10 +53,10 @@ ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure
 print(type(ex["structure"]))
 ```
 ```
-<class 'bio_datasets.protein.Protein'>
+<class 'bio_datasets.protein.ProteinChain'>
 ```
 
-That's it: when you access data from a dataset with preset Bio Datasets feature types, the datapoints that it returns will be Python dictionaries containing your Protein data formatted as a `bio_datasets.protein.Protein` object (basically a biotite AtomArray with some added convenience methods for Protein ML.)
+That's it: when you access data from a dataset with preset Bio Datasets feature types, the datapoints that it returns will be Python dictionaries containing your Protein data formatted as a `bio_datasets.protein.ProteinChain` object (basically a biotite AtomArray with some added convenience methods for Protein ML.)
 
 The trick is that the data was stored together with the required Feature type information, which we can inspect directly:
 
@@ -74,7 +74,7 @@ We can also inspect the raw data format used for storage by discarding the featu
 
 ```python
 dataset.info.features = None
-dataset[0]["structure"]  # a foldcomp byte string
+dataset[0]["structure"]  # a dictionary with key bytes whose value is the foldcomp byte string
 ```
 
 ### Creating a dataset with bio feature types
@@ -135,8 +135,13 @@ Let's convert the `bio_datasets.StructureFeature` data to the `bio_datasets.Atom
 
 
 ```python
-from datasets import Features, Value
+from datasets import Features, Value, load_dataset
 from bio_datasets import AtomArrayFeature
+
+dataset = load_dataset(
+    "graph-transformers/afdb_e_coli",
+    split="train",
+)
 pdb_time = timeit.timeit(stmt="""[ex for ex in dataset]""", number=1, globals=globals())
 def convert_structure_to_array(ex, features):
     return features.encode_example(ex)

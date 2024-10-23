@@ -894,11 +894,8 @@ class ProteinStructureFeature(StructureFeature):
         atoms = atoms[filter_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
-            assert (
-                not self.drop_sidechains
-            ), "Cannot drop sidechains for multi-chain proteins."
             return ProteinComplex.from_atoms(atoms)
-        return ProteinChain(atoms, backbone_only=self.drop_sidechains)
+        return ProteinChain(atoms)
 
 
 @dataclass

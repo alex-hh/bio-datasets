@@ -477,9 +477,10 @@ def examples_generator(
     metadata: pd.DataFrame,
     dataset_path: str,
     max_examples: Optional[int] = None,
+    cleanup: bool = False,
 ):
     for index_df in index:
-        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path, cleanup=True)
+        ds = PinderDataset(index_df, metadata, dataset_path=dataset_path, cleanup=cleanup)
         print(f"Dataset length: {len(ds)}")
         for i in tqdm.tqdm(range(len(ds)), disable=len(index) > 1):
             if max_examples is not None and i >= max_examples:
@@ -519,6 +520,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_path", type=str, default=None)
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--num_proc", type=int, default=None)
+    parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
 
     index = get_index()
@@ -599,6 +601,7 @@ if __name__ == "__main__":
                 "metadata": metadata,
                 "dataset_path": args.dataset_path,
                 "max_examples": args.max_examples,
+                "cleanup": args.cleanup,
             },
             split=NamedSplit(split),
             cache_dir=temp_dir,
