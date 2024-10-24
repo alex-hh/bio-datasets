@@ -1,20 +1,13 @@
 """Script demonstrating how to build the Pinder dataset.
 
-What we really want to upload for each protein is a single ProteinComplex feature,
-and two sets of Protein features for each ligand and each receptor
-(representing the unbound and - where available - predicted unbound states).
-The chains should all be pre-aligned to the native complex.
+Each bound complex in the Pinder dataset is represented by a single ProteinAtomArray feature.
+Where available, predicted and experimentally determined ('apo') unbound states for both receptor
+and ligand are also represented by ProteinAtomArray features.
+We only upload the 'canonical' apo conformation for each protein.
 
-To store the structures - we could even drop the missing coordinates and rely on the numbering
-being the same.
-
-We should also upload a raw version where we don't do any alignment or masking.
-
-TODO: handle 'canonical' vs non-canonical apo conformation:
-https://github.com/pinder-org/pinder/blob/9c70a92119b844d0d20e35f483b4f1f26b2899c4/src/pinder-core/pinder/core/index/system.py#L89
-
-Q: what is difference between create_complex and create_masked_bound_unbound_complexes?
-
+The sequences of the unbound states are not aligned to the bound state, so that each unbound state
+covers an identical set of residues to the bound state. Any missing coordinates in the unbound states
+are set to NaN.
 """
 import argparse
 import contextlib
@@ -335,6 +328,8 @@ class PinderDataset:
 
         native_R = system.native_R.filter("hetero", [False])
         native_L = system.native_L.filter("hetero", [False])
+        if len(native_R.atom_array) == 0 or len(native_L.atom_array) == 0:
+            return None
         native_R_at, _ = Protein.standardise_atoms(native_R.atom_array, drop_oxt=True)
         native_L_at, _ = Protein.standardise_atoms(native_L.atom_array, drop_oxt=True)
         native_R.atom_array = native_R_at
@@ -455,6 +450,8 @@ class PinderDataset:
         else:
             uniprot_seq_L = None
         structures = self.make_structures(system)
+        if structures is None:
+            return None
         holo_receptor = structures.pop("holo_receptor")
         holo_ligand = structures.pop("holo_ligand")
 
@@ -540,6 +537,8 @@ def examples_generator(
             except Exception as e:
                 print(f"Error getting example {index_df.iloc[i]['id']}")
                 raise e
+            if ex is None:
+                continue
             ex["complex"] = ex["complex"].atom_array
             ex["apo_receptor"] = (
                 ex["apo_receptor"].atom_array
