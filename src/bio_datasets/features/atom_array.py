@@ -445,9 +445,9 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         ]
         if not self.all_atoms_present:
             features.append(("atom_name", Array1D((None,), "string")))
-            features.append(("residue_starts", Array1D((None,), "uint16")))
+            features.append(("residue_starts", Array1D((None,), "uint32")))
         if self.with_res_id:
-            features.append(("res_id", Array1D((None,), "uint16")))
+            features.append(("res_id", Array1D((None,), "uint32")))
         if self.with_hetero:
             features.append(("hetero", Array1D((None,), "bool")))
         if self.with_ins_code:
