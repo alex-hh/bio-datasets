@@ -55,6 +55,7 @@ def get_relative_atom_indices_mapping() -> np.ndarray:
     all_atom_indices_mapping = []
     for resname in resnames:
         if resname == "UNK":
+            # n.b. in some structures, UNK also contains CB, CG, ...
             residue_atom_list = ["N", "CA", "C", "O"]
         else:
             residue_atom_list = residue_atoms_ordered[resname]
@@ -340,7 +341,7 @@ class Protein:
             expected_relative_atom_indices = expected_relative_atom_indices[~oxt_mask]
             oxt_mask = np.zeros(len(atoms), dtype=bool)
         unexpected_atom_mask = expected_relative_atom_indices == -100
-        if np.any(unexpected_atom_mask):
+        if np.any(unexpected_atom_mask & (atoms.res_name != "UNK")):
             unexpected_atoms = atoms.atom_name[unexpected_atom_mask]
             unexpected_residues = atoms.res_name[unexpected_atom_mask]
             unexpected_str = "\n".join(
@@ -357,6 +358,15 @@ class Protein:
                 f"At least one unexpected atom detected in a residue: {unexpected_str}.\n"
                 f"HETATMs are not supported."
             )
+
+        # for unk residues, we just drop any e.g. sidechain atoms without raising an exception
+        unexpected_unk_atom_mask = unexpected_atom_mask & (atoms.res_name == "UNK")
+        atoms = atoms[~unexpected_unk_atom_mask]
+        expected_relative_atom_indices = expected_relative_atom_indices[
+            ~unexpected_unk_atom_mask
+        ]
+        oxt_mask = oxt_mask[~unexpected_unk_atom_mask]
+        residue_starts = get_residue_starts(atoms)
 
         (
             new_atom_array,

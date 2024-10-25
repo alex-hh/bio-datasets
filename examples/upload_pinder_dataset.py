@@ -329,6 +329,10 @@ class PinderDataset:
         native_R = system.native_R.filter("hetero", [False])
         native_L = system.native_L.filter("hetero", [False])
         if len(native_R.atom_array) == 0 or len(native_L.atom_array) == 0:
+            print(
+                f"Skipping {system.entry.id} because it has no atoms after excluding "
+                f"hetero atoms, R {len(native_R.atom_array)} L {len(native_L.atom_array)}"
+            )
             return None
         native_R_at, _ = Protein.standardise_atoms(native_R.atom_array, drop_oxt=True)
         native_L_at, _ = Protein.standardise_atoms(native_L.atom_array, drop_oxt=True)
@@ -535,9 +539,11 @@ def examples_generator(
                 with suppress_output():
                     ex = ds[i]
             except Exception as e:
-                print(f"Error getting example {index_df.iloc[i]['id']}")
-                raise e
+                print(f"Error getting example {index_df.iloc[i]['id']}", e)
+                # raise e
+                continue
             if ex is None:
+                print(f"Skipping None example {index_df.iloc[i]['id']}")
                 continue
             ex["complex"] = ex["complex"].atom_array
             ex["apo_receptor"] = (
@@ -616,6 +622,7 @@ if __name__ == "__main__":
             "ligand_uniprot_seq": Value("string"),
             # TODO: switch to array1d when following issue fixed:
             # https://github.com/huggingface/datasets/issues/7243
+            # the two sequences basically define the keys and values of a dictionary mapping resids to uniprot ids
             "receptor_resids_with_uniprot_mapping": Sequence(Value("uint16")),
             "receptor_mapped_uniprot_resids": Sequence(Value("uint16")),
             "ligand_resids_with_uniprot_mapping": Sequence(Value("uint16")),
