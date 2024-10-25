@@ -10,7 +10,8 @@ from typing import List, Optional, Tuple, Union
 
 import biotite.structure as bs
 import numpy as np
-from biotite.structure.filter import filter_amino_acids
+
+# from biotite.structure.filter import filter_amino_acids  includes non-standard
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 
@@ -84,10 +85,21 @@ RESIDUE_SIZES = np.array(
 
 
 def get_aa_index(res_name: np.ndarray) -> np.ndarray:
+    # TODO: currently can't use map_categories_to_indices directly because requires sorting
+    # N.B. atom37 only includes atoms in standard amino acids, so exclude non-standard
     # n.b. resnames are sorted in alphabetical order, apart from UNK
+    if not np.all(np.isin(res_name, np.array(resnames))):
+        raise ValueError(
+            f"res_name contains elements not in the allowed list: "
+            f"{np.unique(res_name[~np.isin(res_name, np.array(resnames))])}"
+        )
     indices = np.searchsorted(np.array(resnames[:-1]), res_name)
     values = np.arange(len(resnames[:-1]))[indices]
     return values
+
+
+def filter_standard_amino_acids(array):
+    return np.isin(array.res_name, resnames)
 
 
 def filter_atom_names(array, atom_names):
@@ -112,7 +124,7 @@ def filter_backbone(array):
         is a part of the peptide backbone.
     """
 
-    return filter_atom_names(array, BACKBONE_ATOMS) & filter_amino_acids(array)
+    return filter_atom_names(array, BACKBONE_ATOMS) & filter_standard_amino_acids(array)
 
 
 def set_annotation_at_masked_atoms(
@@ -233,7 +245,7 @@ class Protein:
             The atoms of the protein.
         """
         self.backbone_only = backbone_only
-        atoms = atoms[filter_amino_acids(atoms)]
+        atoms = atoms[filter_standard_amino_acids(atoms)]
         self.atoms, self._residue_starts = self.standardise_atoms(
             atoms,
             verbose=verbose,

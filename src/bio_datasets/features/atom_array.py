@@ -20,7 +20,6 @@ import numpy as np
 import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure import get_chains
-from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
@@ -40,6 +39,7 @@ from bio_datasets.protein.protein import (
     ProteinComplex,
     create_complete_atom_array_from_aa_index,
     filter_backbone,
+    filter_standard_amino_acids,
     get_residue_starts_mask,
 )
 
@@ -875,7 +875,7 @@ class ProteinStructureFeature(StructureFeature):
 
     def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
-            value = value[filter_amino_acids(value)]
+            value = value[filter_standard_amino_acids(value)]
             if "element" not in value._annot:
                 value.set_annotation(
                     "element", np.char.array(value.atom_name).astype("U1")
@@ -891,7 +891,7 @@ class ProteinStructureFeature(StructureFeature):
             return None
         # TODO: check this always excludes hetatms
         # TODO: filter amino acids in encode_example also where possible
-        atoms = atoms[filter_amino_acids(atoms)]
+        atoms = atoms[filter_standard_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             return ProteinComplex.from_atoms(atoms)
@@ -943,7 +943,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 )
             value = value[~np.isin(value.element, ["H", "D"])]
             # TODO: check this always excludes hetatms
-            return super().encode_example(value[filter_amino_acids(value)])
+            return super().encode_example(value[filter_standard_amino_acids(value)])
         if isinstance(value, Protein):
             if self.drop_sidechains:
                 value = value.backbone()
@@ -956,7 +956,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
-        atoms = atoms[filter_amino_acids(atoms)]
+        atoms = atoms[filter_standard_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             assert (

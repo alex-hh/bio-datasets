@@ -28,6 +28,8 @@ from datasets import Dataset, Features, NamedSplit, Sequence, Value
 from google.cloud.storage import Blob
 from pinder.core.utils import cloud as pinder_cloud_utils
 
+from bio_datasets.protein.protein import filter_standard_amino_acids
+
 UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
 
@@ -315,6 +317,13 @@ class PinderDataset:
 
         return ref_struct, target_struct
 
+    def _filter_non_standard(self, struct):
+        struct = struct.filter("hetero", [False])
+        at = struct.atom_array
+        at = at[filter_standard_amino_acids(at)]
+        struct.atom_array = at
+        return struct
+
     def make_structures(self, system: PinderSystem):
         """We have to choose which reference to align to: choices are complex, apo (unbound) or predicted (unbound).
 
@@ -326,32 +335,36 @@ class PinderDataset:
         has_pred = system.entry.predicted_R and system.entry.predicted_L
         pred_count = int(system.entry.predicted_R) + int(system.entry.predicted_L)
 
-        native_R = system.native_R.filter("hetero", [False])
-        native_L = system.native_L.filter("hetero", [False])
+        native_R = self._filter_non_standard(system.native_R)
+        native_L = self._filter_non_standard(system.native_L)
         if len(native_R.atom_array) == 0 or len(native_L.atom_array) == 0:
             print(
                 f"Skipping {system.entry.id} because it has no atoms after excluding "
-                f"hetero atoms, R {len(native_R.atom_array)} L {len(native_L.atom_array)}"
+                f"hetero atoms and non-standard aas, R {len(native_R.atom_array)} L {len(native_L.atom_array)}"
             )
             return None
+
         native_R_at, _ = Protein.standardise_atoms(native_R.atom_array, drop_oxt=True)
         native_L_at, _ = Protein.standardise_atoms(native_L.atom_array, drop_oxt=True)
         native_R.atom_array = native_R_at
         native_L.atom_array = native_L_at
-        holo_receptor = system.holo_receptor.filter("hetero", [False])
-        holo_ligand = system.holo_ligand.filter("hetero", [False])
+
+        holo_receptor = self._filter_non_standard(system.holo_receptor)
+        holo_ligand = self._filter_non_standard(system.holo_ligand)
+
         # apo_complex = system.create_apo_complex() - this superimposes structures, which gives info away about interaction
         # https://github.com/pinder-org/pinder/blob/8ad1ead7a174736635c13fa7266d9ca54cf9f44e/examples/pinder-system.ipynb
         if has_apo:
             apo_R, apo_L = system.apo_receptor, system.apo_ligand
-            apo_R = apo_R.filter("hetero", [False])
-            apo_L = apo_L.filter("hetero", [False])
+            apo_R = self._filter_non_standard(apo_R)
+            apo_L = self._filter_non_standard(apo_L)
         else:
             apo_R, apo_L = None, None
         if has_pred:
             pred_R, pred_L = system.pred_receptor, system.pred_ligand
-            pred_R = pred_R.filter("hetero", [False])
-            pred_L = pred_L.filter("hetero", [False])
+            pred_R = self._filter_non_standard(pred_R)
+            pred_L = self._filter_non_standard(pred_L)
+
         else:
             pred_R, pred_L = None, None
 

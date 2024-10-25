@@ -417,6 +417,7 @@ residue_atoms_ordered = {
     "MSE": ["N", "CA", "C", "O", "CB", "CG", "SE", "CE"],  # Selenomethionine (added)
     "PHE": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"],
     "PRO": ["N", "CA", "C", "O", "CB", "CG", "CD"],
+    # "PYL": ["N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ", "CG2", "CD2", "CE2", "N2"],  # Pyrrolysine (added)
     "SER": ["N", "CA", "C", "O", "CB", "OG"],
     "THR": ["N", "CA", "C", "O", "CB", "OG1", "CG2"],
     "TRP": [
@@ -481,6 +482,7 @@ between_res_cos_angles_ca_c_n = [-0.4473, 0.0311]  # degrees: 116.568 +- 1.995
 
 # This mapping is used when we need to store atom data in a format that requires
 # fixed atom data size for every residue (e.g. a numpy array).
+# atom types for the 20 standard amino acids
 atom_types = [
     "N",
     "CA",
