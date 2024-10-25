@@ -14,7 +14,7 @@ from .atom_array import (
     StructureFeature,
 )
 
-register_feature(StructureFeature, "Structure")
-register_feature(AtomArrayFeature, "AtomArray")
-register_feature(ProteinAtomArrayFeature, "Protein")
-register_feature(ProteinStructureFeature, "ProteinStructure")
+register_feature(StructureFeature, "StructureFeature")
+register_feature(AtomArrayFeature, "AtomArrayFeature")
+register_feature(ProteinAtomArrayFeature, "ProteinAtomArrayFeature")
+register_feature(ProteinStructureFeature, "ProteinStructureFeature")

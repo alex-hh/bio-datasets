@@ -68,7 +68,7 @@ def main(
             "afdb", drop_sidechains=backbone_only
         )
         if as_array
-        else ProteinStructureFeature(with_b_factor=True, drop_sidechains=backbone_only),
+        else ProteinStructureFeature(with_b_factor=True),
     )
     import tempfile
 

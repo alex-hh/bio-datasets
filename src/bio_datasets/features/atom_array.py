@@ -434,7 +434,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
     id: Optional[str] = None
     # Automatically constructed
     _type: str = field(
-        default="AtomArray", init=False, repr=False
+        default="AtomArrayFeature", init=False, repr=False
     )  # registered feature name
 
     def _make_features_dict(self):
@@ -736,7 +736,7 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
     pa_type: ClassVar[Any] = pa.struct(
         {"bytes": pa.binary(), "path": pa.string(), "type": pa.string()}
     )
-    _type: str = field(default="Structure", init=False, repr=False)
+    _type: str = field(default="StructureFeature", init=False, repr=False)
 
     def __call__(self):
         return self.pa_type
@@ -871,7 +871,7 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
 
 @dataclass
 class ProteinStructureFeature(StructureFeature):
-    _type: str = field(default="ProteinStructure", init=False, repr=False)
+    _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
 
     def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
@@ -911,7 +911,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     drop_sidechains: bool = False
     internal_coords_type: str = None  # foldcomp, idealised, or pnerf
     _type: str = field(
-        default="Protein", init=False, repr=False
+        default="ProteinAtomArrayFeature", init=False, repr=False
     )  # registered feature name
 
     @classmethod
