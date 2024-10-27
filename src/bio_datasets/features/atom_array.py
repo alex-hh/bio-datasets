@@ -346,7 +346,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
     This feature stores the array directly as a pa struct (basically a dictionary of arrays),
     as defined in the AtomArrayExtensionType.
 
-    Input: The BiomolecularStructureFile feature accepts as (encodeable) input (Q. where would 'input' typically occur):
+    Input: The AtomArrayFeature feature accepts as (encodeable) input (Q. where would 'input' typically occur):
     - A `biotite.structure.AtomArray` object.
     - TODO: a Biopython structure object
     - TODO: a file handler or file contents string?

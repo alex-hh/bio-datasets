@@ -10,6 +10,9 @@ authors = [
     "Alex Hawkins-Hooker",
 ]
 requires-python = ">=3.7"
+packages = [
+    { include = "bio_datasets", from = "src" }
+]
 
 [tool.poetry.dependencies]
 biotite = ">=1.0.0"
