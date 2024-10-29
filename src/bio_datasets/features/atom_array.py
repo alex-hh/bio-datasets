@@ -31,17 +31,8 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.protein import constants as protein_constants
-from bio_datasets.protein.protein import (
-    BACKBONE_ATOMS,
-    Protein,
-    ProteinChain,
-    ProteinComplex,
-    create_complete_atom_array_from_aa_index,
-    filter_backbone,
-    filter_standard_amino_acids,
-    get_residue_starts_mask,
-)
+from bio_datasets.structure import ProteinChain, ProteinComplex, ProteinMixin
+from bio_datasets.structure.protein import constants as protein_constants
 
 if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
@@ -172,7 +163,7 @@ def atom_array_from_dict(d: dict) -> bs.AtomArray:
             if aa == "O":
                 aa = "K"
             res_name = protein_constants.restype_1to3[aa]
-            for atom_name in BACKBONE_ATOMS:
+            for atom_name in protein_constants.BACKBONE_ATOMS:
                 annots = {}
                 for k in annots_keys:
                     annots[k] = d[k][res_ix]
@@ -501,7 +492,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         )
 
     def encode_example(self, value: Union[bs.AtomArray, dict]) -> dict:
-        if isinstance(value, Protein):
+        if isinstance(value, (ProteinChain, ProteinComplex)):
             value = value.atoms
         if isinstance(value, dict):
             if "bytes" in value or "path" in value or "type" in value:
@@ -522,7 +513,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         elif isinstance(value, bs.AtomArray):
             if self.all_atoms_present:
                 orig_length = len(value)
-                value, residue_starts = Protein.standardise_atoms(
+                value, residue_starts = ProteinMixin.standardise_atoms(
                     value, backbone_only=self.drop_sidechains
                 )
                 if len(value) != orig_length:
@@ -873,8 +864,9 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
 class ProteinStructureFeature(StructureFeature):
     _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
 
-    def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
+    def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
+            # TODO: use residue dictionary.
             value = value[filter_standard_amino_acids(value)]
             if "element" not in value._annot:
                 value.set_annotation(

@@ -40,7 +40,7 @@ class ProteinDictionary(ResidueDictionary):
     residue_names = copy.deepcopy(protein_constants.resnames)
     residue_types = copy.deepcopy(protein_constants.restypes_with_x)
     atom_types = copy.deepcopy(protein_constants.atom_types)
-    residue_atoms = copy.deepcopy(protein_constants.residue_atoms_ordered)
+    residue_atoms = copy.deepcopy(protein_constants.residue_atoms)
     backbone_atoms = ["N", "CA", "C", "O"]
     unknown_residue_name = "UNK"
     conversions = [

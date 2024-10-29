@@ -2,8 +2,8 @@ import numpy as np
 from biotite.structure.filter import filter_amino_acids
 from biotite.structure.residues import residue_iter
 
-from bio_datasets.protein import Protein
-from bio_datasets.protein import constants as protein_constants
+from bio_datasets.structure.protein import ProteinChain
+from bio_datasets.structure.protein import constants as protein_constants
 
 
 def test_residue_atom_order(pdb_atom_array):
@@ -83,7 +83,7 @@ def test_fill_missing_atoms(pdb_atom_array):
     """
     pdb_atom_array = pdb_atom_array[filter_amino_acids(pdb_atom_array)]
     # 1qys has missing atoms
-    protein = Protein(pdb_atom_array)
+    protein = ProteinChain(pdb_atom_array)
     # todo check for nans
     for raw_residue, filled_residue in zip(
         residue_iter(pdb_atom_array[filter_amino_acids(pdb_atom_array)]),

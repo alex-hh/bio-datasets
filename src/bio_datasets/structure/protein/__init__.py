@@ -1,4 +1,3 @@
-__all__ = [ProteinChain, ProteinComplex]
+__all__ = ["ProteinChain", "ProteinComplex", "ProteinMixin"]
 
-
-from .protein import ProteinChain, ProteinComplex
+from .protein import ProteinChain, ProteinComplex, ProteinMixin

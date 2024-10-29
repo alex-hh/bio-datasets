@@ -347,6 +347,7 @@ rigid_group_atom_positions = {
 }
 
 # Reordered atoms in standard order
+# order should be consistent with atom_types
 residue_atoms = {
     "ALA": ["N", "CA", "C", "O", "CB"],
     "ARG": ["N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"],
@@ -388,6 +389,11 @@ residue_atoms = {
     "VAL": ["N", "CA", "C", "O", "CB", "CG1", "CG2"],
 }
 
+restype_name_to_atom14_names = {
+    restype: [atom_name for atom_name in residue_atoms[restype]]
+    + [""] * (14 - len(residue_atoms[restype]))
+    for restype in residue_atoms
+}
 
 # Naming swaps for ambiguous atom names.
 # Due to symmetries in the amino acids the naming of atoms is ambiguous in
@@ -654,23 +660,23 @@ for res_name, chi_angle_atoms_for_res in chi_angles_atoms.items():
 chi_groups_for_atom = dict(chi_groups_for_atom)
 
 
-# restype_atom14_ambiguous_atoms = np.zeros((21, 14), dtype=np.float32)
-# restype_atom14_ambiguous_atoms_swap_idx = np.tile(np.arange(14, dtype=int), (21, 1))
+restype_atom14_ambiguous_atoms = np.zeros((21, 14), dtype=np.float32)
+restype_atom14_ambiguous_atoms_swap_idx = np.tile(np.arange(14, dtype=int), (21, 1))
 
 
-# def _make_atom14_ambiguity_feats():
-#     for res, pairs in residue_atom_renaming_swaps.items():
-#         res_idx = restype_order[restype_3to1[res]]
-#         for atom1, atom2 in pairs.items():
-#             atom1_idx = restype_name_to_atom14_names[res].index(atom1)
-#             atom2_idx = restype_name_to_atom14_names[res].index(atom2)
-#             restype_atom14_ambiguous_atoms[res_idx, atom1_idx] = 1
-#             restype_atom14_ambiguous_atoms[res_idx, atom2_idx] = 1
-#             restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom1_idx] = atom2_idx
-#             restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom2_idx] = atom1_idx
+def _make_atom14_ambiguity_feats():
+    for res, pairs in residue_atom_renaming_swaps.items():
+        res_idx = restype_order[restype_3to1[res]]
+        for atom1, atom2 in pairs.items():
+            atom1_idx = restype_name_to_atom14_names[res].index(atom1)
+            atom2_idx = restype_name_to_atom14_names[res].index(atom2)
+            restype_atom14_ambiguous_atoms[res_idx, atom1_idx] = 1
+            restype_atom14_ambiguous_atoms[res_idx, atom2_idx] = 1
+            restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom1_idx] = atom2_idx
+            restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom2_idx] = atom1_idx
 
 
-# _make_atom14_ambiguity_feats()
+_make_atom14_ambiguity_feats()
 
 
 def aatype_to_str_sequence(aatype):
