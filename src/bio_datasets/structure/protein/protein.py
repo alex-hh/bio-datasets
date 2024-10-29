@@ -6,7 +6,7 @@ for dealing with protein structures in an ML context.
 """
 import copy
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 import biotite.structure as bs
 import numpy as np
@@ -16,8 +16,10 @@ from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.structure.biomolecule import (
     ALL_EXTRA_FIELDS,
+    Biomolecule,
     BiomoleculeChain,
     BiomoleculeComplex,
+    create_complete_atom_array_from_restype_index,
 )
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import (
@@ -27,7 +29,7 @@ from bio_datasets.structure.residue import (
 
 from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
 
-# RESTYPE ATOM37 TO ATOM14 can be derived
+# TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary
 
 
 @dataclass
@@ -117,37 +119,70 @@ def set_annotation_at_masked_atoms(
         getattr(atoms, annot_name)[atoms.mask] = new_annot[atoms.mask]
 
 
-def create_complete_atom_array_from_restype_index(
+def create_protein_atom_array_from_restype_index(
     restype_index: np.ndarray,
     residue_dictionary: ResidueDictionary,
-    chain_id: Union[str, np.ndarray],
+    chain_id: str,
     extra_fields: Optional[List[str]] = None,
     backbone_only: bool = False,
     add_oxt: bool = False,
 ):
     """
-    Populate annotations from aa_index, assuming all atoms are present.
+    Populate annotations from aa_index, assuming all atoms are present, optionally adding OXT atoms.
     """
-
-    (
-        new_atom_array,
-        residue_starts,
-        full_annot_names,
-    ) = create_complete_atom_array_from_restype_index(
-        restype_index=restype_index,
-        residue_dictionary=residue_dictionary,
-        chain_id=chain_id,
-        extra_fields=extra_fields,
-        backbone_only=backbone_only,
-    )
-    if add_oxt:
+    if not add_oxt:
+        return create_complete_atom_array_from_restype_index(
+            restype_index=restype_index,
+            residue_dictionary=residue_dictionary,
+            chain_id=chain_id,
+            extra_fields=extra_fields,
+            backbone_only=backbone_only,
+        )
+    if isinstance(chain_id, np.ndarray):
+        unique_chain_ids = np.unique(chain_id)
+        chain_atom_arrays = []
+        chain_residue_starts = []
+        residue_starts_offset = 0
+        for chain_id in unique_chain_ids:
+            (
+                atom_array,
+                residue_starts,
+                full_annot_names,
+            ) = create_protein_atom_array_from_restype_index(
+                restype_index=restype_index,
+                residue_dictionary=residue_dictionary,
+                chain_id=chain_id,
+                extra_fields=extra_fields,
+                backbone_only=backbone_only,
+                add_oxt=True,
+            )
+            residue_starts_offset += len(atom_array)
+            chain_atom_arrays.append(atom_array)
+            chain_residue_starts.append(residue_starts + residue_starts_offset)
+        return (
+            sum(chain_atom_arrays, bs.AtomArray(length=0)),
+            np.concatenate(chain_residue_starts),
+            full_annot_names,
+        )
+    else:
+        (
+            new_atom_array,
+            residue_starts,
+            full_annot_names,
+        ) = create_complete_atom_array_from_restype_index(
+            restype_index=restype_index,
+            residue_dictionary=residue_dictionary,
+            chain_id=chain_id,
+            extra_fields=extra_fields,
+            backbone_only=backbone_only,
+        )
         new_atom = new_atom_array[-1].copy()
         # TODO: test this
         if new_atom.res_name != "UNK":
             new_atom.atom_name = "OXT"  # other annotations shared with final atom
             new_atom_array.append(new_atom)
 
-    return new_atom_array, residue_starts, full_annot_names
+        return new_atom_array, residue_starts, full_annot_names
 
 
 # TODO: add support for batched application of these functions (i.e. to multiple proteins at once)
@@ -163,7 +198,6 @@ class ProteinMixin:
         verbose: bool = False,
         backbone_only: bool = False,
         drop_oxt: bool = False,
-        exclude_hydrogens: bool = True,
     ):
         """We want all atoms to be present, with nan coords if any are missing.
 
@@ -176,57 +210,44 @@ class ProteinMixin:
         This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
         and `to_atom37` can be applied safely downstream.
         """
-        # The way to do this is to standardise the non-terminal residues then handle the terminal residues separately
-
-        # first we get an array of atom indices for each residue (i.e. a mapping from atom37 index to expected index
-        # then we index into this array to get the expected index for each atom
-        expected_relative_atom_indices = (
-            residue_dictionary.relative_atom_indices_mapping[
-                atoms.aa_index, atoms.atom37_index
-            ]
+        if drop_oxt:
+            atoms = atoms[atoms.atom_name != "OXT"]
+            return Biomolecule.standardise_atoms(
+                atoms,
+                residue_dictionary,
+                residue_starts=residue_starts,
+                verbose=verbose,
+                backbone_only=backbone_only,
+            )
+        atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        residue_starts = get_residue_starts(atoms)
+        # create a new atom array with oxts added - specific to protein standardisation
+        new_atom_array = create_protein_atom_array_from_restype_index(
+            atoms.restype_index[residue_starts],
+            residue_dictionary,
+            chain_id=atoms.chain_id,
+            extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
+            add_oxt=True,
         )
+        atoms = Biomolecule.standardise_atoms(
+            atoms,
+            new_atom_array=new_atom_array,
+            residue_dictionary=residue_dictionary.to_terminal_dictionary(),  # doesn't affect the size of the array - but allows oxts to be present
+            verbose=verbose,
+            backbone_only=backbone_only,
+        )
+        # check that oxts are always at final residue in chain
         final_residue_in_chain = atoms.chain_id[residue_starts] != np.concatenate(
-            [atoms.chain_id[residue_starts][1:], ["ZZZZ"]]
+            [atoms.chain_id[residue_starts][1:], ["ZZZ"]]  # ZZZ an arbitrary chain ID
         )
         final_residue_in_chain = tile_residue_annotation_to_atoms(
             atoms, final_residue_in_chain, residue_starts
         )
-        oxt_mask = (atoms.atom_name == "OXT") & final_residue_in_chain
-        if np.any(oxt_mask) and not drop_oxt:
-            expected_relative_atom_indices[oxt_mask] = (
-                residue_dictionary.relative_atom_indices_mapping[
-                    atoms.aa_index[oxt_mask]
-                ].max()
-                + 1
-            )
-        elif drop_oxt:
-            atoms = atoms[~oxt_mask]
-            expected_relative_atom_indices = expected_relative_atom_indices[~oxt_mask]
-            oxt_mask = np.zeros(len(atoms), dtype=bool)
-
-        unexpected_atom_mask = expected_relative_atom_indices == -100
-        # for unk residues, we just drop any e.g. sidechain atoms without raising an exception
-        unexpected_unk_atom_mask = unexpected_atom_mask & (
-            atoms.res_name == residue_dictionary.unknown_residue_name
-        )
-        atoms = atoms[~unexpected_unk_atom_mask]
-        expected_relative_atom_indices = expected_relative_atom_indices[
-            ~unexpected_unk_atom_mask
-        ]
-        oxt_mask = oxt_mask[~unexpected_unk_atom_mask]
-        residue_starts = get_residue_starts(atoms)
-
-        (
-            new_atom_array,
-            full_residue_starts,
-            full_annot_names,
-        ) = create_complete_atom_array_from_restype_index(
-            atoms.restype_index[residue_starts],
-            atoms.chain_id[residue_starts],
-            extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
-            add_oxt=np.any(oxt_mask),
-        )
-        return self.standardise_new_atom_array()
+        oxt_mask = atoms.atom_name == "OXT"
+        assert not np.any(
+            oxt_mask[~final_residue_in_chain]
+        ), "OXTs must be at final residue in chain"
+        return atoms
 
     def beta_carbon_coords(self) -> np.ndarray:
         has_beta_carbon = self.atoms.res_name != "GLY"

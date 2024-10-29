@@ -34,7 +34,9 @@ class SmallMolecule:
     The three letter 'res_name' is a unique identifier for a chemical component dictionary entry.
     The CCD maps to SMILES and InChI strings, as well as idealised 3D coordinates.
 
-    https://www.wwpdb.org/data/ccd
+    Refs:
+    CCD: https://www.wwpdb.org/data/ccd
+    General info on small molecules in the PDB: https://www.rcsb.org/docs/general-help/ligand-structure-quality-in-pdb-structures
 
     We want to provide the option to load this information into rdkit format, e.g. for graph representations.
 
