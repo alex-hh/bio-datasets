@@ -6,7 +6,7 @@ for dealing with protein structures in an ML context.
 """
 import copy
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import biotite.structure as bs
 import numpy as np
@@ -27,22 +27,59 @@ from bio_datasets.structure.residue import (
 
 from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
 
+# RESTYPE ATOM37 TO ATOM14 can be derived
+
 
 @dataclass
-class StandardProteinDictionary(ResidueDictionary):
-    """Just the 20 standard amino acids"""
+class ProteinDictionary(ResidueDictionary):
+    """Defaults configure a dictionary with just the 20 standard amino acids"""
 
+    # TODO: these are actually all constants
     residue_names = copy.deepcopy(protein_constants.resnames)
     residue_types = copy.deepcopy(protein_constants.restypes_with_x)
     atom_types = copy.deepcopy(protein_constants.atom_types)
     residue_atoms = copy.deepcopy(protein_constants.residue_atoms_ordered)
     backbone_atoms = ["N", "CA", "C", "O"]
     unknown_residue_name = "UNK"
-    # convert selenium to sulphur
     conversions = [
         {"residue": "MSE", "to_residue": "MET", "atom_swaps": [("SE", "SD")]},
         {"residue": "SEC", "to_residue": "CYS", "atom_swaps": [("SE", "SG")]},
     ]
+
+    def _check_atom14_compatible(self):
+        return all(len(res_ats) <= 14 for res_ats in self.residue_atoms.values())
+
+    def _check_atom37_compatible(self):
+        return all(
+            at in protein_constants.atom_types
+            for res_ats in self.residue_atoms.values()
+            for at in res_ats
+        )
+
+    def __post_init__(self):
+        self._atom37_compatible = self._check_atom37_compatible()
+        self._atom14_compatible = self._check_atom14_compatible()
+        return super().__post_init__()
+
+    @property
+    def atom37_compatible(self):
+        return self._atom37_compatible
+
+    @property
+    def atom14_compatible(self):
+        return self._atom14_compatible
+
+    def to_terminal_dictionary(self):
+        """for standardising C-terminal residues, we need to add OXT to the list of atoms"""
+        return ResidueDictionary(
+            residue_names=self.residue_names,
+            residue_types=self.residue_types,
+            atom_types=self.atom_types,
+            residue_atoms={k: v + ["OXT"] for k, v in self.residue_atoms.items()},
+            backbone_atoms=self.backbone_atoms,
+            unknown_residue_name=self.unknown_residue_name,
+            conversions=self.conversions,
+        )
 
 
 def filter_backbone(array, residue_dictionary):
@@ -115,11 +152,6 @@ def create_complete_atom_array_from_restype_index(
 
 # TODO: add support for batched application of these functions (i.e. to multiple proteins at once)
 class ProteinMixin:
-
-    residue_dictionary = (
-        StandardProteinDictionary  # override by subclassing if necessary
-    )
-
     def to_complex(self):
         return ProteinComplex.from_atoms(self.atoms)
 
@@ -144,6 +176,8 @@ class ProteinMixin:
         This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
         and `to_atom37` can be applied safely downstream.
         """
+        # The way to do this is to standardise the non-terminal residues then handle the terminal residues separately
+
         # first we get an array of atom indices for each residue (i.e. a mapping from atom37 index to expected index
         # then we index into this array to get the expected index for each atom
         expected_relative_atom_indices = (
@@ -228,7 +262,10 @@ class ProteinMixin:
         return super().contacts(atom_name=atom_name, threshold=threshold)
 
     def atom14_coords(self) -> np.ndarray:
-        # TODO: replace this with standard residue dictionary methods
+        assert (
+            self.residue_dictionary.atom14_compatible
+            and self.residue_dictionary.atom37_compatible
+        ), "Atom14 representation assumes use of standard amino acid dictionary"
         atom14_coords = np.full((len(self.num_residues), 14, 3), np.nan)
         atom14_index = RESTYPE_ATOM37_TO_ATOM14[
             self.atoms.residue_index, self.atoms.atom37_index
@@ -237,6 +274,9 @@ class ProteinMixin:
         return atom14_coords
 
     def atom37_coords(self) -> np.ndarray:
+        assert (
+            self.residue_dictionary.atom37_compatible
+        ), "Atom37 representation assumes use of standard amino acid dictionary"
         # since we have standardised the atoms we can just return standardised atom37 indices for each residue
         atom37_coords = np.full((len(self.num_residues), len(atom_types), 3), np.nan)
         atom37_coords[
@@ -256,19 +296,22 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
     def __init__(
         self,
         atoms: bs.AtomArray,
+        residue_dictionary: Optional[ResidueDictionary] = None,
         verbose: bool = False,
         backbone_only: bool = False,
+        exclude_hydrogens: bool = True,
+        standardisation_kwargs: Optional[Dict] = None,
     ):
-        """
-        Parameters
-        ----------
-        atoms : AtomArray
-            The atoms of the protein.
-        """
-        super().__init__(atoms, verbose=verbose, backbone_only=backbone_only)
-        assert (
-            np.unique(atoms.chain_id).size == 1
-        ), "Only a single chain is supported by `Protein` objects. Consider using a different feature type."
+        if residue_dictionary is None:
+            residue_dictionary = ProteinDictionary()
+        super().__init__(
+            atoms,
+            residue_dictionary=residue_dictionary,
+            verbose=verbose,
+            backbone_only=backbone_only,
+            exclude_hydrogens=exclude_hydrogens,
+            standardisation_kwargs=standardisation_kwargs,
+        )
 
     @property
     def chain_id(self):

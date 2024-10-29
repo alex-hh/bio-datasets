@@ -96,6 +96,11 @@ class ResidueDictionary:
             )
         return map_categories_to_indices(restype, self.residue_types)
 
+    def atomtype_index_full_to_short(self):
+        # return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
+        # raise NotImplementedError()
+        return np.stack()
+
     def resname_to_onehot(self, resname: np.ndarray) -> np.ndarray:
         masks = [resname == r for r in self.residue_names]
         return np.stack(masks, axis=-1)

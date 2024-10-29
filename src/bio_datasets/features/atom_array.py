@@ -905,6 +905,8 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
 
     These objects have standardised atoms (with nans for any missing atoms),
     and are guaranteed to contain no HETATMs or hydrogens.
+
+    For generic storage of atom arrays without standardisation, see AtomArrayFeature
     """
 
     all_atoms_present: bool = False

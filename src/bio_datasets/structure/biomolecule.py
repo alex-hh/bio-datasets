@@ -9,11 +9,7 @@ from biotite.structure.residues import get_residue_starts
 from bio_datasets.np_utils import map_categories_to_indices
 
 from .chemical import Molecule, T
-from .residue import (
-    ResidueDictionary,
-    get_residue_starts_mask,
-    tile_residue_annotation_to_atoms,
-)
+from .residue import ResidueDictionary, get_residue_starts_mask
 
 ALL_EXTRA_FIELDS = ["occupancy", "b_factor", "atom_id", "charge"]
 
@@ -91,20 +87,21 @@ class Biomolecule(Molecule):
 
     Biomolecule and modality-specific subclasses provide convenience
     methods for interacting with residue-level properties.
-    """
 
-    resname_converter: Callable
-    backbone_atoms: List[str]
-    residue_dictionary: ResidueDictionary
+    n.b. as well as proteins, dna and rna, the PDB also contains hybrid dna/rna molecules.
+    other classes of biopolymers are polysaccharides and peptidoglycans.
+    """
 
     def __init__(
         self,
         atoms: bs.AtomArray,
+        residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
         exclude_hydrogens: bool = True,
         standardisation_kwargs: Optional[Dict] = None,
     ):
+        self.residue_dictionary = residue_dictionary
         self.backbone_only = backbone_only
         self._residue_starts = get_residue_starts(atoms)
         atoms = self.convert_residues(atoms)
@@ -142,11 +139,11 @@ class Biomolecule(Molecule):
         residue_starts: np.ndarray,
     ):
         atoms.set_annotation(
-            "atom_type_index",
+            "atomtype_index",
             map_categories_to_indices(atoms.atom_name, residue_dictionary.atom_types),
         )
         atoms.set_annotation(
-            "res_type_index", residue_dictionary.resname_to_index(atoms.res_name)
+            "restype_index", residue_dictionary.resname_to_index(atoms.res_name)
         )
         atoms.set_annotation(
             "res_index",
@@ -183,7 +180,7 @@ class Biomolecule(Molecule):
         ):
             expected_relative_atom_indices = (
                 residue_dictionary.relative_atom_indices_mapping[
-                    atoms.aa_index, atoms.atom_type_index
+                    atoms.aa_index, atoms.atomtype_index
                 ]
             )
 
@@ -269,7 +266,7 @@ class Biomolecule(Molecule):
         )
 
         new_atom_array.set_annotation(
-            "atom_type_index",
+            "atomtype_index",
             map_categories_to_indices(
                 new_atom_array.atom_name, residue_dictionary.atom_types
             ),
@@ -293,7 +290,7 @@ class Biomolecule(Molecule):
         if backbone_only:
             # TODO: more efficient backbone only
             new_atom_array = new_atom_array[
-                np, isin(new_atom_array.atom_name, residue_dictionary.backbone_atomss)
+                np.isin(new_atom_array.atom_name, residue_dictionary.backbone_atomss)
             ]
             full_residue_starts = get_residue_starts(new_atom_array)
         return new_atom_array, full_residue_starts
@@ -435,8 +432,27 @@ class Biomolecule(Molecule):
         raise NotImplementedError()
 
 
-class BiomoleculeChain:
-    pass
+class BiomoleculeChain(Biomolecule):
+    def __init__(
+        self,
+        atoms: bs.AtomArray,
+        residue_dictionary: ResidueDictionary,
+        verbose: bool = False,
+        backbone_only: bool = False,
+        exclude_hydrogens: bool = True,
+        standardisation_kwargs: Optional[Dict] = None,
+    ):
+        assert (
+            len(np.unique(atoms.chain_id)) == 1
+        ), f"Expected single chain, found chain ids {np.unique(atoms.chain_id)}"
+        super().__init__(
+            atoms=atoms,
+            residue_dictionary=residue_dictionary,
+            verbose=verbose,
+            backbone_only=backbone_only,
+            exclude_hydrogens=exclude_hydrogens,
+            standardisation_kwargs=standardisation_kwargs,
+        )
 
 
 class BiomoleculeComplex(Biomolecule):
