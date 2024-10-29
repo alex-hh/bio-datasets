@@ -11,25 +11,20 @@ from typing import Dict, List, Optional, Union
 import biotite.structure as bs
 import numpy as np
 
-# from biotite.structure.filter import filter_amino_acids  includes non-standard
-from biotite.structure.residues import get_residue_starts
-
 from bio_datasets.structure.biomolecule import (
-    ALL_EXTRA_FIELDS,
     Biomolecule,
     BiomoleculeChain,
     BiomoleculeComplex,
-    create_complete_atom_array_from_restype_index,
 )
 from bio_datasets.structure.protein import constants as protein_constants
-from bio_datasets.structure.residue import (
-    ResidueDictionary,
-    tile_residue_annotation_to_atoms,
-)
+from bio_datasets.structure.residue import ResidueDictionary
 
 from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
 
-# TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary
+# from biotite.structure.filter import filter_amino_acids  includes non-standard
+
+
+# TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary (atom14_coords)
 
 
 @dataclass
@@ -101,7 +96,7 @@ class ProteinDictionary(ResidueDictionary):
         ] = super().get_expected_relative_atom_indices(
             restype_index[~oxt_mask], atomtype_index[~oxt_mask]
         )
-        expected_relative_atom_indices[oxt_mask] = residues_with_oxt_sizes + 1
+        expected_relative_atom_indices[oxt_mask] = residues_with_oxt_sizes
         return expected_relative_atom_indices
 
     def get_atom_names(

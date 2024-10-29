@@ -155,7 +155,7 @@ class Biomolecule(Molecule):
 
     @property
     def is_standardised(self):
-        return self._is_standardised
+        return self._standardised
 
     @staticmethod
     def convert_residues(atoms: bs.AtomArray, residue_dictionary: ResidueDictionary):
@@ -217,7 +217,6 @@ class Biomolecule(Molecule):
             chain_id=atoms.chain_id[residue_starts],
             extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
         )
-        print(new_atom_array._annot)
         # first we get an array of atom indices for each residue (i.e. a mapping from atom type index to expected index
         # then we index into this array to get the expected relative index for each atom
         expected_relative_atom_indices = (

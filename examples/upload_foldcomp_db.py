@@ -1,55 +1,42 @@
 """
 Upload a foldcomp database to the hub.
-
-# TODO: rewrite with foldcompdb?
-
-storage requirements for backbone coordinates:
-coords are 4 x 3 x 2 bytes (float16) = 24 bytes per residue
-bfactor is 2 bytes per residue
-residue starts are 2 bytes per residue
-sequence is 1 byte per residue
-atom name is ~ 4 bytes per residue
-
-so we can save a load of bytes by not storing the atom names
-or residue starts for AF - since they can be inferred from the sequence
-
-so total storage we really need is
-
-12/24 bytes for backbone coords (discretised/float16)
-1? byte for side chain coords
-1? byte for bfactors (discretised)
-1 byte for sequence
-
-i.e. 15/27 bytes per residue in total; foldcomp appears to store ~16!
-
-For non-AF models, saving atom names is fine; we could infer residue starts
-from atom names but we might as well just save them too.
-
-c.f.https://github.com/huggingface/datasets/tree/main/templates
 """
 import argparse
+import io
 import itertools
 import os
 from typing import Optional
 
 import foldcomp
-from datasets import Dataset, Features, NamedSplit, Value
+from datasets import Dataset, Features, Value, NamedSplit
 
 from bio_datasets.features import ProteinAtomArrayFeature, ProteinStructureFeature
+from bio_datasets.features.atom_array import load_structure
+from bio_datasets.structure import ProteinChain
 
 
-def examples_generator(db_file, max_examples: Optional[int] = None):
+def examples_generator(
+    db_file, max_examples: Optional[int] = None, as_array: bool = False
+):
     assert os.path.exists(db_file)
     with foldcomp.open(db_file, decompress=True) as db:
         for (name, pdb_str) in itertools.islice(db, max_examples):
             # if we opened with decompress False, we wouldn't get name
-            pdb_bytes = foldcomp.compress(name, pdb_str)
-            # pdb_bytes = bytes(pdb_str)
-            example = {
-                "name": name,
-                "structure": {"bytes": pdb_bytes, "path": None, "type": "fcz"},
-            }
-            yield example
+            if as_array:
+                atoms = load_structure(io.StringIO(pdb_str))
+                example = {
+                    "name": name,
+                    "structure": ProteinChain(atoms),
+                }
+                yield example
+            else:
+                pdb_bytes = foldcomp.compress(name, pdb_str)
+                # pdb_bytes = bytes(pdb_str)
+                example = {
+                    "name": name,
+                    "structure": {"bytes": pdb_bytes, "path": None, "type": "fcz"},
+                }
+                yield example
 
 
 def main(
@@ -58,7 +45,6 @@ def main(
     as_array: bool,
     config_name: Optional[str] = None,
     max_examples: Optional[int] = None,
-    coords_dtype: str = "float32",
     backbone_only: bool = False,
 ):
     # from_generator calls GeneratorBasedBuilder.download_and_prepare and as_dataset
@@ -75,9 +61,14 @@ def main(
     with tempfile.TemporaryDirectory() as temp_dir:
         ds = Dataset.from_generator(
             examples_generator,
-            gen_kwargs={"db_file": db_file, "max_examples": max_examples},
+            gen_kwargs={
+                "db_file": db_file,
+                "max_examples": max_examples,
+                "as_array": as_array,
+            },
             features=features,
             cache_dir=temp_dir,
+            split=NamedSplit("train"),
         )
         ds.push_to_hub(repo_id, config_name=config_name or "default")
 
@@ -90,7 +81,6 @@ if __name__ == "__main__":
     parser.add_argument("--as_array", action="store_true")
     parser.add_argument("--config_name", type=str, default=None)
     parser.add_argument("--max_examples", type=int, default=None)
-    parser.add_argument("--coords_dtype", type=str, default="float32")
     parser.add_argument("--backbone_only", action="store_true")
     args = parser.parse_args()
     if args.foldcomp_db_name is None and args.foldcomp_db_path is None:
@@ -110,6 +100,5 @@ if __name__ == "__main__":
         args.as_array,
         config_name=args.config_name,
         max_examples=args.max_examples,
-        coords_dtype=args.coords_dtype,
         backbone_only=args.backbone_only,
     )
