@@ -38,6 +38,9 @@ from bio_datasets.structure import (
     ProteinComplex,
     ProteinMixin,
 )
+from bio_datasets.structure.biomolecule import (
+    create_complete_atom_array_from_restype_index,
+)
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import get_residue_starts_mask
 
@@ -648,7 +651,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
             else:
                 chain_id = np.full(len(aa_index), self.chain_id)
                 del value["chain_id"]
-            atoms, residue_starts, _ = create_complete_atom_array_from_aa_index(
+            atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
                 aa_index, chain_id, backbone_only=self.drop_sidechains
             )
             residue_index = (

@@ -8,7 +8,7 @@ import os
 from typing import Optional
 
 import foldcomp
-from datasets import Dataset, Features, Value, NamedSplit
+from datasets import Dataset, Features, NamedSplit, Value
 
 from bio_datasets.features import ProteinAtomArrayFeature, ProteinStructureFeature
 from bio_datasets.features.atom_array import load_structure
@@ -83,7 +83,9 @@ if __name__ == "__main__":
     parser.add_argument("--config_name", type=str, default=None)
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--backbone_only", action="store_true")
-    parser.add_argument("--tmp_dir", type=str, default=None)  # use a usb drive for large datasets (caching)
+    parser.add_argument(
+        "--tmp_dir", type=str, default=None
+    )  # use a usb drive for large datasets (caching)
     args = parser.parse_args()
     if args.foldcomp_db_name is None and args.foldcomp_db_path is None:
         raise ValueError("Either foldcomp_db_name or foldcomp_db_path must be provided")
