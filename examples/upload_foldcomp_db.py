@@ -23,7 +23,7 @@ def examples_generator(
         for (name, pdb_str) in itertools.islice(db, max_examples):
             # if we opened with decompress False, we wouldn't get name
             if as_array:
-                atoms = load_structure(io.StringIO(pdb_str))
+                atoms = load_structure(io.StringIO(pdb_str), extra_fields=["b_factor"])
                 example = {
                     "name": name,
                     "structure": ProteinChain(atoms),
@@ -46,6 +46,7 @@ def main(
     config_name: Optional[str] = None,
     max_examples: Optional[int] = None,
     backbone_only: bool = False,
+    tmp_dir: Optional[str] = None,
 ):
     # from_generator calls GeneratorBasedBuilder.download_and_prepare and as_dataset
     features = Features(
@@ -58,7 +59,7 @@ def main(
     )
     import tempfile
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(dir=args.tmp_dir) as temp_dir:
         ds = Dataset.from_generator(
             examples_generator,
             gen_kwargs={
@@ -82,6 +83,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_name", type=str, default=None)
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--backbone_only", action="store_true")
+    parser.add_argument("--tmp_dir", type=str, default=None)  # use a usb drive for large datasets (caching)
     args = parser.parse_args()
     if args.foldcomp_db_name is None and args.foldcomp_db_path is None:
         raise ValueError("Either foldcomp_db_name or foldcomp_db_path must be provided")
@@ -101,4 +103,5 @@ if __name__ == "__main__":
         config_name=args.config_name,
         max_examples=args.max_examples,
         backbone_only=args.backbone_only,
+        tmp_dir=args.tmp_dir,
     )

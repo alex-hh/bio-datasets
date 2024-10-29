@@ -507,6 +507,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                 or isinstance(value, Biomolecule)
                 and value.is_standardised
             )
+        if isinstance(value, Biomolecule):
             return super().encode_example(value.atoms, is_standardised=True)
         if isinstance(value, dict):
             if "bytes" in value or "path" in value or "type" in value:
