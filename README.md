@@ -12,9 +12,9 @@ We aim to do these three things and *no more*, leaving you to get on with the sc
 
 ## Efficient conversion between storage and usage formats
 
-The best format for storing data is typically not the most convenient format for data to be loaded into for downstream applications. The Datasets library abstracts the details of these choices and the logic for converting between formats into Feature classes, dictating how data of particular types should be stored and loaded. We extend the Datasets library by creating Feature types for optimised storage and loading of biological data, starting with proteins.
+The best format for storing data is typically not the most convenient format for data to be loaded into for downstream applications. The Datasets library abstracts the details of these choices and the logic for converting between formats into Feature classes, dictating how data of particular types should be stored and loaded. We extend the Datasets library by creating Feature types for optimised storage and loading of biological data, starting with biomolecular structures.
 
-The main formats we support for storing and loading protein data are:
+The main formats we support for storing and loading biomolecular structure data are:
 
 
 | Feature name |   Storage format    |  Loaded as  |
@@ -181,7 +181,7 @@ TODO: add docs.
 
 ## Roadmap
 
-* Support for other biological data types: protein-ligand complexes, DNA, single cell / omics, MD, ...
+* Support for other biological data types: protein-ligand complexes, MD, single cell / omics, ...
 
 
 ## Contributions

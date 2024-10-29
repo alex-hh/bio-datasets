@@ -346,60 +346,8 @@ rigid_group_atom_positions = {
     ],
 }
 
-# A list of atoms (excluding hydrogen) for each AA type. PDB naming convention.
-residue_atoms = {
-    "ALA": ["C", "CA", "CB", "N", "O"],
-    "ARG": ["C", "CA", "CB", "CG", "CD", "CZ", "N", "NE", "O", "NH1", "NH2"],
-    "ASP": ["C", "CA", "CB", "CG", "N", "O", "OD1", "OD2"],
-    "ASN": ["C", "CA", "CB", "CG", "N", "ND2", "O", "OD1"],
-    "CYS": ["C", "CA", "CB", "N", "O", "SG"],
-    "GLU": ["C", "CA", "CB", "CG", "CD", "N", "O", "OE1", "OE2"],
-    "GLN": ["C", "CA", "CB", "CG", "CD", "N", "NE2", "O", "OE1"],
-    "GLY": ["C", "CA", "N", "O"],
-    "HIS": ["C", "CA", "CB", "CG", "CD2", "CE1", "N", "ND1", "NE2", "O"],
-    "ILE": ["C", "CA", "CB", "CG1", "CG2", "CD1", "N", "O"],
-    "LEU": ["C", "CA", "CB", "CG", "CD1", "CD2", "N", "O"],
-    "LYS": ["C", "CA", "CB", "CG", "CD", "CE", "N", "NZ", "O"],
-    "MET": ["C", "CA", "CB", "CG", "CE", "N", "O", "SD"],
-    "PHE": ["C", "CA", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "N", "O"],
-    "PRO": ["C", "CA", "CB", "CG", "CD", "N", "O"],
-    "SER": ["C", "CA", "CB", "N", "O", "OG"],
-    "THR": ["C", "CA", "CB", "CG2", "N", "O", "OG1"],
-    "TRP": [
-        "C",
-        "CA",
-        "CB",
-        "CG",
-        "CD1",
-        "CD2",
-        "CE2",
-        "CE3",
-        "CZ2",
-        "CZ3",
-        "CH2",
-        "N",
-        "NE1",
-        "O",
-    ],
-    "TYR": [
-        "C",
-        "CA",
-        "CB",
-        "CG",
-        "CD1",
-        "CD2",
-        "CE1",
-        "CE2",
-        "CZ",
-        "N",
-        "O",
-        "OH",
-    ],
-    "VAL": ["C", "CA", "CB", "CG1", "CG2", "N", "O"],
-}
-
 # Reordered atoms in standard order
-residue_atoms_ordered = {
+residue_atoms = {
     "ALA": ["N", "CA", "C", "O", "CB"],
     "ARG": ["N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"],
     "ASP": ["N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"],
@@ -528,257 +476,6 @@ atom_type_num = len(atom_types)  # := 37.
 # A compact atom encoding with 14 columns
 # pylint: disable=line-too-long
 # pylint: disable=bad-whitespace
-restype_name_to_atom14_names = {
-    "ALA": ["N", "CA", "C", "O", "CB", "", "", "", "", "", "", "", "", ""],
-    "ARG": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD",
-        "NE",
-        "CZ",
-        "NH1",
-        "NH2",
-        "",
-        "",
-        "",
-    ],
-    "ASN": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "OD1",
-        "ND2",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "ASP": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "OD1",
-        "OD2",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "CYS": ["N", "CA", "C", "O", "CB", "SG", "", "", "", "", "", "", "", ""],
-    "GLN": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD",
-        "OE1",
-        "NE2",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "GLU": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD",
-        "OE1",
-        "OE2",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "GLY": ["N", "CA", "C", "O", "", "", "", "", "", "", "", "", "", ""],
-    "HIS": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "ND1",
-        "CD2",
-        "CE1",
-        "NE2",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "ILE": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG1",
-        "CG2",
-        "CD1",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "LEU": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD1",
-        "CD2",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "LYS": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD",
-        "CE",
-        "NZ",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "MET": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "SD",
-        "CE",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "PHE": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD1",
-        "CD2",
-        "CE1",
-        "CE2",
-        "CZ",
-        "",
-        "",
-        "",
-    ],
-    "PRO": ["N", "CA", "C", "O", "CB", "CG", "CD", "", "", "", "", "", "", ""],
-    "SER": ["N", "CA", "C", "O", "CB", "OG", "", "", "", "", "", "", "", ""],
-    "THR": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "OG1",
-        "CG2",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "TRP": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD1",
-        "CD2",
-        "NE1",
-        "CE2",
-        "CE3",
-        "CZ2",
-        "CZ3",
-        "CH2",
-    ],
-    "TYR": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD1",
-        "CD2",
-        "CE1",
-        "CE2",
-        "CZ",
-        "OH",
-        "",
-        "",
-    ],
-    "VAL": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG1",
-        "CG2",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ],
-    "UNK": ["", "", "", "", "", "", "", "", "", "", "", "", "", ""],
-}
-# pylint: enable=line-too-long
-# pylint: enable=bad-whitespace
-
 
 # This is the standard residue order when coding AA type as a number.
 # Reproduce it by taking 3-letter AA codes and sorting them alphabetically.
@@ -957,23 +654,23 @@ for res_name, chi_angle_atoms_for_res in chi_angles_atoms.items():
 chi_groups_for_atom = dict(chi_groups_for_atom)
 
 
-restype_atom14_ambiguous_atoms = np.zeros((21, 14), dtype=np.float32)
-restype_atom14_ambiguous_atoms_swap_idx = np.tile(np.arange(14, dtype=int), (21, 1))
+# restype_atom14_ambiguous_atoms = np.zeros((21, 14), dtype=np.float32)
+# restype_atom14_ambiguous_atoms_swap_idx = np.tile(np.arange(14, dtype=int), (21, 1))
 
 
-def _make_atom14_ambiguity_feats():
-    for res, pairs in residue_atom_renaming_swaps.items():
-        res_idx = restype_order[restype_3to1[res]]
-        for atom1, atom2 in pairs.items():
-            atom1_idx = restype_name_to_atom14_names[res].index(atom1)
-            atom2_idx = restype_name_to_atom14_names[res].index(atom2)
-            restype_atom14_ambiguous_atoms[res_idx, atom1_idx] = 1
-            restype_atom14_ambiguous_atoms[res_idx, atom2_idx] = 1
-            restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom1_idx] = atom2_idx
-            restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom2_idx] = atom1_idx
+# def _make_atom14_ambiguity_feats():
+#     for res, pairs in residue_atom_renaming_swaps.items():
+#         res_idx = restype_order[restype_3to1[res]]
+#         for atom1, atom2 in pairs.items():
+#             atom1_idx = restype_name_to_atom14_names[res].index(atom1)
+#             atom2_idx = restype_name_to_atom14_names[res].index(atom2)
+#             restype_atom14_ambiguous_atoms[res_idx, atom1_idx] = 1
+#             restype_atom14_ambiguous_atoms[res_idx, atom2_idx] = 1
+#             restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom1_idx] = atom2_idx
+#             restype_atom14_ambiguous_atoms_swap_idx[res_idx, atom2_idx] = atom1_idx
 
 
-_make_atom14_ambiguity_feats()
+# _make_atom14_ambiguity_feats()
 
 
 def aatype_to_str_sequence(aatype):
