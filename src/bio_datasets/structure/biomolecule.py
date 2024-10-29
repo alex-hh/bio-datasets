@@ -43,11 +43,18 @@ def create_complete_atom_array_from_restype_index(
                 extra_fields=extra_fields,
                 backbone_only=backbone_only,
             )
-            residue_starts_offset += len(atom_array)
             chain_atom_arrays.append(atom_array)
             chain_residue_starts.append(residue_starts + residue_starts_offset)
+            residue_starts_offset += len(atom_array)
+        concatenated_array = sum(chain_atom_arrays, bs.AtomArray(length=0))
+        for key in atom_array._annot.keys():
+            if key not in concatenated_array._annot:
+                concatenated_array.set_annotation(
+                    key,
+                    np.concatenate([atoms._annot[key] for atoms in chain_atom_arrays]),
+                )
         return (
-            sum(chain_atom_arrays, bs.AtomArray(length=0)),
+            concatenated_array,
             np.concatenate(chain_residue_starts),
             full_annot_names,
         )
@@ -55,40 +62,41 @@ def create_complete_atom_array_from_restype_index(
         if backbone_only:
             residue_sizes = len(residue_dictionary.backbone_atoms) * len(restype_index)
         else:
-            residue_sizes = residue_dictionary.residue_sizes[
-                restype_index
-            ]  # (n_residues,) NOT (n_atoms,) -- add 1 to account for OXT
+            residue_sizes = residue_dictionary.get_residue_sizes(
+                restype_index, chain_id
+            )
+            # (n_residues,) NOT (n_atoms,)
 
         residue_starts = np.concatenate(
             [[0], np.cumsum(residue_sizes)[:-1]]
         )  # (n_residues,)
         new_atom_array = bs.AtomArray(length=np.sum(residue_sizes))
+        chain_id = np.full(len(new_atom_array), chain_id, dtype="U4")
+        new_atom_array.set_annotation(
+            "chain_id",
+            chain_id,
+        )
+        full_annot_names = [
+            "chain_id",
+        ]
         residue_index = (
             np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
         )
-
-        full_annot_names = []
-        new_atom_array.set_annotation(
-            "chain_id",
-            np.full(len(new_atom_array), chain_id, dtype=new_atom_array.chain_id.dtype),
-        )
-        full_annot_names.append("chain_id")
 
         relative_atom_index = (
             np.arange(len(new_atom_array)) - residue_starts[residue_index]
         )
         atom_names = new_atom_array.atom_name
         new_atom_array.set_annotation("restype_index", restype_index[residue_index])
-        atom_names = residue_dictionary.standard_atoms_by_residue[
-            new_atom_array.restype_index,
-            relative_atom_index,
-        ]
+        atom_names = residue_dictionary.get_atom_names(
+            new_atom_array.restype_index, relative_atom_index, chain_id
+        )
         new_atom_array.set_annotation("atom_name", atom_names)
         new_atom_array.set_annotation(
             "res_name",
             np.array(residue_dictionary.residue_names)[new_atom_array.restype_index],
         )
-        new_atom_array.set_annotation("residue_index", residue_index)
+        new_atom_array.set_annotation("res_index", residue_index)
         new_atom_array.set_annotation("res_id", residue_index + 1)
         new_atom_array.set_annotation(
             "element", np.char.array(new_atom_array.atom_name).astype("U1")
@@ -97,7 +105,7 @@ def create_complete_atom_array_from_restype_index(
             "atom_name",
             "restype_index",
             "res_name",
-            "residue_index",
+            "res_index",
             "res_id",
         ]
         if extra_fields is not None:
@@ -126,42 +134,67 @@ class Biomolecule(Molecule):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        exclude_hydrogens: bool = True,
+        raise_error_on_unexpected_residue: bool = False,
     ):
         self.residue_dictionary = residue_dictionary
         self.backbone_only = backbone_only
-        atoms = self.convert_residues(atoms)
-        atoms = self.filter_atoms(atoms)
-        atoms = self.set_atom_annotations(
+        self.raise_error_on_unexpected_residue = raise_error_on_unexpected_residue
+        atoms = self.convert_residues(atoms, self.residue_dictionary)
+        atoms = self.filter_atoms(
             atoms,
-            residue_dictionary=self.residue_dictionary,
-            residue_starts=self._residue_starts,
-        )
+            self.residue_dictionary,
+            raise_error_on_unexpected=self.raise_error_on_unexpected_residue,
+        )  # e.g. check for standard residues.
         self.atoms = self.standardise_atoms(
             atoms,
             residue_dictionary=self.residue_dictionary,
             verbose=verbose,
             backbone_only=self.backbone_only,
-            exclude_hydrogens=exclude_hydrogens,
         )
         self._standardised = True
+
+    @property
+    def is_standardised(self):
+        return self._is_standardised
 
     @staticmethod
     def convert_residues(atoms: bs.AtomArray, residue_dictionary: ResidueDictionary):
         for conversion_dict in residue_dictionary.conversions or []:
             atom_swaps = conversion_dict["atom_swaps"]
-            from_mask = atoms[atoms.res_name == conversion_dict["residue"]]
+            from_mask = (atoms.res_name == conversion_dict["residue"]).astype(bool)
             for swap in atom_swaps:
-                atoms[from_mask & atoms.atom_name == swap[0]].atom_name = swap[1]
-            atoms[from_mask].res_name = conversion_dict["to_residue"]
+                atoms.atom_name[
+                    from_mask & (atoms.atom_name == swap[0]).astype(bool)
+                ] = swap[1]
+            atoms.res_name[from_mask] = conversion_dict["to_residue"]
         return atoms
 
     @staticmethod
-    def set_atom_annotations(
-        atoms: bs.AtomArray,
-        residue_dictionary: ResidueDictionary,
-        residue_starts: np.ndarray,
+    def filter_atoms(
+        atoms, residue_dictionary, raise_error_on_unexpected: bool = False
     ):
+        expected_residue_mask = np.isin(
+            atoms.res_name, residue_dictionary.residue_names
+        )
+        if raise_error_on_unexpected and ~expected_residue_mask.any():
+            unexpected_residues = np.unique(atoms[~expected_residue_mask].res_name)
+            raise ValueError(
+                f"Found unexpected residues: {unexpected_residues} in atom array"
+            )
+        return atoms[expected_residue_mask]
+
+    @staticmethod
+    def standardise_atoms(
+        atoms,
+        residue_dictionary,
+        verbose: bool = False,
+        backbone_only: bool = False,
+    ):
+        assert (
+            "element" in atoms._annot
+        ), "Elements must be present to exclude hydrogens"
+        atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        residue_starts = get_residue_starts(atoms)
         atoms.set_annotation(
             "atomtype_index",
             map_categories_to_indices(atoms.atom_name, residue_dictionary.atom_types),
@@ -173,44 +206,25 @@ class Biomolecule(Molecule):
             "res_index",
             np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1,
         )
-        return atoms
 
-    @staticmethod
-    def standardise_atoms(
-        atoms,
-        residue_dictionary,
-        new_atom_array: Optional[Tuple[bs.AtomArray, np.ndarray, List[str]]] = None,
-        verbose: bool = False,
-        backbone_only: bool = False,
-    ):
-        assert (
-            "element" in atoms._annot
-        ), "Elements must be present to exclude hydrogens"
-        atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
-
-        residue_starts = get_residue_starts(atoms)
-        if new_atom_array is None:
-            (
-                new_atom_array,
-                full_residue_starts,
-                full_annot_names,
-            ) = create_complete_atom_array_from_restype_index(
-                atoms.restype_index[residue_starts],
-                residue_dictionary=residue_dictionary,
-                chain_id=atoms.chain_id[residue_starts],
-                extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
-            )
+        (
+            new_atom_array,
+            full_residue_starts,
+            full_annot_names,
+        ) = create_complete_atom_array_from_restype_index(
+            atoms.restype_index[residue_starts],
+            residue_dictionary=residue_dictionary,
+            chain_id=atoms.chain_id[residue_starts],
+            extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
+        )
+        print(new_atom_array._annot)
         # first we get an array of atom indices for each residue (i.e. a mapping from atom type index to expected index
         # then we index into this array to get the expected relative index for each atom
-        if (
-            not isinstance(expected_relative_atom_indices, np.ndarray)
-            and expected_relative_atom_indices is None
-        ):
-            expected_relative_atom_indices = (
-                residue_dictionary.relative_atom_indices_mapping[
-                    atoms.aa_index, atoms.atomtype_index
-                ]
+        expected_relative_atom_indices = (
+            residue_dictionary.get_expected_relative_atom_indices(
+                atoms.restype_index, atoms.atomtype_index
             )
+        )
 
         unexpected_atom_mask = expected_relative_atom_indices == -100
         if np.any(
@@ -247,9 +261,10 @@ class Biomolecule(Molecule):
         assert len(full_residue_starts) == len(
             residue_starts
         ), f"Full residue starts: {full_residue_starts} and residue starts: {residue_starts} do not match"
+
         existing_atom_indices_in_full_array = (
             full_residue_starts[atoms.res_index] + expected_relative_atom_indices
-        ).astype(int)
+        )
 
         for annot_name, annot in atoms._annot.items():
             if (
@@ -265,6 +280,9 @@ class Biomolecule(Molecule):
         new_atom_array.coord[existing_atom_indices_in_full_array] = atoms.coord
         # if we can create a res start index for each atom, we can assign the value based on that...
 
+        assert (
+            np.unique(new_atom_array.res_index) == np.unique(atoms.res_index)
+        ).all(), "We need this to agree to use residue indexing for filling annotations"
         new_atom_array.set_annotation(
             "res_id",
             atoms.res_id[residue_starts][new_atom_array.res_index].astype(
@@ -273,7 +291,7 @@ class Biomolecule(Molecule):
         )  # override with auth res id
         new_atom_array.set_annotation(
             "chain_id",
-            atoms.chain_id[residue_starts][new_atom_array.residue_index].astype(
+            atoms.chain_id[residue_starts][new_atom_array.res_index].astype(
                 new_atom_array.chain_id.dtype
             ),
         )
@@ -370,9 +388,6 @@ class Biomolecule(Molecule):
         else:
             return self.__class__(self.atoms[key])
 
-    def filter_atoms(self, atoms):
-        raise NotImplementedError("Must be implemented on child class")
-
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
         assert all(
             [atom in self.backbone_atoms for atom in atom_names]
@@ -458,8 +473,6 @@ class BiomoleculeChain(Biomolecule):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        exclude_hydrogens: bool = True,
-        standardisation_kwargs: Optional[Dict] = None,
     ):
         assert (
             len(np.unique(atoms.chain_id)) == 1
@@ -469,8 +482,6 @@ class BiomoleculeChain(Biomolecule):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
-            exclude_hydrogens=exclude_hydrogens,
-            standardisation_kwargs=standardisation_kwargs,
         )
 
 

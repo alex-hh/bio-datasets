@@ -387,6 +387,12 @@ residue_atoms = {
     ],
     "TYR": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"],
     "VAL": ["N", "CA", "C", "O", "CB", "CG1", "CG2"],
+    "UNK": [
+        "N",
+        "CA",
+        "C",
+        "O",
+    ],  # n.b. other atoms can be present in unk residues - we typically discard
 }
 
 restype_name_to_atom14_names = {

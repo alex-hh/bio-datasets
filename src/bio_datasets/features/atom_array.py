@@ -20,6 +20,7 @@ import numpy as np
 import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure import get_chains
+from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
@@ -31,8 +32,14 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.structure import ProteinChain, ProteinComplex, ProteinMixin
+from bio_datasets.structure import (
+    Biomolecule,
+    ProteinChain,
+    ProteinComplex,
+    ProteinMixin,
+)
 from bio_datasets.structure.protein import constants as protein_constants
+from bio_datasets.structure.residue import get_residue_starts_mask
 
 if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
@@ -409,12 +416,12 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
     bonds.
     """
 
-    all_atoms_present: ClassVar[
-        bool
-    ] = False  # to use this, need to be decoding to Protein (ProteinAtomArrayFeature)
     drop_sidechains: ClassVar[bool] = False
     requires_encoding: bool = True
     requires_decoding: bool = True
+    all_atoms_present: bool = (
+        False  # when all atoms are present, we dont need to store atom name
+    )
     decode: bool = True
     coords_dtype: str = "float32"
     b_factor_is_plddt: bool = False
@@ -491,9 +498,16 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
             arrays, names=list(self._features), mask=array.is_null()
         )
 
-    def encode_example(self, value: Union[bs.AtomArray, dict]) -> dict:
-        if isinstance(value, (ProteinChain, ProteinComplex)):
-            value = value.atoms
+    def encode_example(
+        self, value: Union[bs.AtomArray, dict], is_standardised: bool = False
+    ) -> dict:
+        if self.all_atoms_present:
+            assert (
+                is_standardised
+                or isinstance(value, Biomolecule)
+                and value.is_standardised
+            )
+            return super().encode_example(value.atoms, is_standardised=True)
         if isinstance(value, dict):
             if "bytes" in value or "path" in value or "type" in value:
                 # if it's already encoded, we don't need to encode it again
@@ -511,17 +525,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                 )
             return self.encode_example(value)
         elif isinstance(value, bs.AtomArray):
-            if self.all_atoms_present:
-                orig_length = len(value)
-                value, residue_starts = ProteinMixin.standardise_atoms(
-                    value, backbone_only=self.drop_sidechains
-                )
-                if len(value) != orig_length:
-                    raise ValueError(
-                        "Standardisation changed the length of the atom array"
-                    )
-            else:
-                residue_starts = get_residue_starts(value)
+            residue_starts = get_residue_starts(value)
             # if len(value) > 65535:
             #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
             if len(residue_starts) > 65535:
@@ -866,8 +870,7 @@ class ProteinStructureFeature(StructureFeature):
 
     def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
-            # TODO: use residue dictionary.
-            value = value[filter_standard_amino_acids(value)]
+            value = value[filter_amino_acids(value)]
             if "element" not in value._annot:
                 value.set_annotation(
                     "element", np.char.array(value.atom_name).astype("U1")
@@ -881,9 +884,7 @@ class ProteinStructureFeature(StructureFeature):
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
-        # TODO: check this always excludes hetatms
         # TODO: filter amino acids in encode_example also where possible
-        atoms = atoms[filter_standard_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             return ProteinComplex.from_atoms(atoms)
@@ -894,6 +895,8 @@ class ProteinStructureFeature(StructureFeature):
 class ProteinAtomArrayFeature(AtomArrayFeature):
 
     """Decodes to a `bio_datasets.protein.Protein` or `bio_datasets.protein.ProteinComplex` object.
+
+    Assumes standard set of amino acids for now.
 
     These objects have standardised atoms (with nans for any missing atoms),
     and are guaranteed to contain no HETATMs or hydrogens.
@@ -926,22 +929,33 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
-    def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
+    def encode_example(
+        self,
+        value: Union[ProteinMixin, dict, bs.AtomArray],
+        is_standardised: bool = False,
+    ) -> dict:
         # TODO: share this code
-        if isinstance(value, bs.AtomArray):
+        if isinstance(value, ProteinMixin):
+            # TODO: switch to extracting backbone.
             if self.drop_sidechains:
-                value = value[filter_backbone(value)]
+                value = value.backbone()
+            return super().encode_example(
+                value.atoms, is_standardised=value.is_standardised
+            )
+        if isinstance(value, bs.AtomArray):
             if "element" not in value._annot:
                 value.set_annotation(
                     "element", np.char.array(value.atom_name).astype("U1")
                 )
-            value = value[~np.isin(value.element, ["H", "D"])]
-            # TODO: check this always excludes hetatms
-            return super().encode_example(value[filter_standard_amino_acids(value)])
-        if isinstance(value, Protein):
+            if not is_standardised:
+                value = value[~np.isin(value.element, ["H", "D"])]
+                value = value[filter_amino_acids(value)]
             if self.drop_sidechains:
-                value = value.backbone()
-            return super().encode_example(value.atoms)
+                backbone_mask = np.isin(
+                    value.atom_name, protein_constants.BACKBONE_ATOMS
+                )
+                value = value[backbone_mask]
+            return super().encode_example(value)
         return super().encode_example(value)
 
     def decode_example(
@@ -950,7 +964,6 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
-        atoms = atoms[filter_standard_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             assert (

@@ -2,7 +2,7 @@ import numpy as np
 from biotite.structure.sequence import to_sequence
 
 from bio_datasets.features.atom_array import AtomArrayFeature
-from bio_datasets.structure.protein import decode_aa_index
+from bio_datasets.structure.protein import ProteinDictionary
 
 
 def test_encode_decode_atom_array(afdb_atom_array):
@@ -13,8 +13,9 @@ def test_encode_decode_atom_array(afdb_atom_array):
     feat = AtomArrayFeature()
     encoded = feat.encode_example(afdb_atom_array)
     bs_sequences, _ = to_sequence(afdb_atom_array)
-    assert decode_aa_index(encoded["aa_index"]) == str(bs_sequences[0])
-    decoded = feat.decode_example(encoded)
+    prot_dict = ProteinDictionary()
+    assert prot_dict.decode_restype_index(encoded["aa_index"]) == str(bs_sequences[0])
+    decoded = feat.decode_example(encoded, prot_dict)
     assert np.all(decoded.coord == afdb_atom_array.coord)
     assert np.all(decoded.atom_name == afdb_atom_array.atom_name)
     assert np.all(decoded.res_name == afdb_atom_array.res_name)

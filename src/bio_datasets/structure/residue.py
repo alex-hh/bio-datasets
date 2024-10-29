@@ -10,9 +10,9 @@ from bio_datasets.np_utils import map_categories_to_indices
 
 @dataclass
 class ResidueDictionary:
-    residue_names: np.ndarray
-    residue_types: np.ndarray
-    atom_types: np.ndarray
+    residue_names: List[str]
+    residue_types: List[str]
+    atom_types: List[str]
     residue_atoms: Dict[str, List]  # defines composition and atom order
     backbone_atoms: List[str]
     unknown_residue_name: str
@@ -73,11 +73,30 @@ class ResidueDictionary:
         Shape (num_residue_types x max_atoms_per_residue)
         e.g. for proteins we use atom14 (21 x 14)
         """
-        arr = np.full((self.residue_names, self.max_residue_size), "", dtype="U6")
+        arr = np.full((len(self.residue_names), self.max_residue_size), "", dtype="U6")
         for ix, residue_name in enumerate(self.residue_names):
             residue_atoms = self.residue_atoms[residue_name]
             arr[ix, : len(residue_atoms)] = residue_atoms
         return arr
+
+    def get_residue_sizes(
+        self, restype_index: np.ndarray, chain_id: np.ndarray
+    ) -> np.ndarray:
+        return self.residue_sizes[restype_index]
+
+    def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
+        return self.relative_atom_indices_mapping[restype_index, atomtype_index]
+
+    def get_atom_names(
+        self,
+        restype_index: np.ndarray,
+        relative_atom_index: np.ndarray,
+        chain_id: np.ndarray,
+    ):
+        return self.standard_atoms_by_residue[
+            restype_index,
+            relative_atom_index,
+        ]
 
     def resname_to_index(self, resname: np.ndarray) -> np.ndarray:
         # n.b. protein resnames are sorted in alphabetical order, apart from UNK
@@ -110,7 +129,7 @@ class ResidueDictionary:
         return np.stack(masks, axis=-1)
 
     def decode_restype_index(self, restype_index: np.ndarray) -> np.ndarray:
-        return "".join(self.residue_types[restype_index])
+        return "".join(np.array(self.residue_types)[restype_index])
 
     def atom_full_to_atom_short(self):
         # eg atom37->atom14

@@ -18,5 +18,5 @@ def atoms_top7():
 
 
 @pytest.fixture(scope="session")
-def pdb_atom_array():
+def pdb_atoms_top7():
     return atoms_top7()
