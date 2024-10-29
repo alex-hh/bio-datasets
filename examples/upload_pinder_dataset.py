@@ -27,8 +27,8 @@ from biotite import structure as bs
 from datasets import Dataset, Features, NamedSplit, Sequence, Value
 from google.cloud.storage import Blob
 from pinder.core.utils import cloud as pinder_cloud_utils
+from bio_datasets.structure.protein import ProteinMixin, constants as protein_constants
 
-from bio_datasets.protein.protein import filter_standard_amino_acids
 
 UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
@@ -86,7 +86,7 @@ from pinder.core.structure.atoms import (
     mask_from_res_list,
 )
 
-from bio_datasets import Protein, ProteinAtomArrayFeature
+from bio_datasets import ProteinAtomArrayFeature
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -271,9 +271,9 @@ class PinderDataset:
         assert len(set(ref_chains)) == 1
 
         ref_at = ref_struct.atom_array.copy()
-        ref_at, _ = Protein.standardise_atoms(ref_at, drop_oxt=True)
+        ref_at, _ = ProteinMixin.standardise_atoms(ref_at, drop_oxt=True)
         target_at = target_struct.atom_array.copy()
-        target_at, _ = Protein.standardise_atoms(target_at, drop_oxt=True)
+        target_at, _ = ProteinMixin.standardise_atoms(target_at, drop_oxt=True)
 
         if mode == "ref":
             # We drop any target residues that aren't present in the reference.
@@ -320,7 +320,7 @@ class PinderDataset:
     def _filter_non_standard(self, struct):
         struct = struct.filter("hetero", [False])
         at = struct.atom_array
-        at = at[filter_standard_amino_acids(at)]
+        at = at[np.isin(at.res_name, protein_constants.resnames)]
         struct.atom_array = at
         return struct
 
@@ -344,8 +344,8 @@ class PinderDataset:
             )
             return None
 
-        native_R_at, _ = Protein.standardise_atoms(native_R.atom_array, drop_oxt=True)
-        native_L_at, _ = Protein.standardise_atoms(native_L.atom_array, drop_oxt=True)
+        native_R_at, _ = ProteinMixin.standardise_atoms(native_R.atom_array, drop_oxt=True)
+        native_L_at, _ = ProteinMixin.standardise_atoms(native_L.atom_array, drop_oxt=True)
         native_R.atom_array = native_R_at
         native_L.atom_array = native_L_at
 
@@ -401,8 +401,8 @@ class PinderDataset:
 
         holo_receptor_at = holo_receptor.atom_array.copy()
         holo_ligand_at = holo_ligand.atom_array.copy()
-        holo_receptor_at, _ = Protein.standardise_atoms(holo_receptor_at, drop_oxt=True)
-        holo_ligand_at, _ = Protein.standardise_atoms(holo_ligand_at, drop_oxt=True)
+        holo_receptor_at, _ = ProteinMixin.standardise_atoms(holo_receptor_at, drop_oxt=True)
+        holo_ligand_at, _ = ProteinMixin.standardise_atoms(holo_ligand_at, drop_oxt=True)
         holo_receptor = Structure(
             filepath=holo_receptor.filepath,
             uniprot_map=holo_receptor.uniprot_map,

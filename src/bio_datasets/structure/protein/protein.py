@@ -280,3 +280,11 @@ class ProteinComplex(ProteinMixin, BiomoleculeComplex):
     def __init__(self, proteins: List[ProteinChain]):
         self._chain_ids = [prot.chain_id for prot in proteins]
         self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
+
+    @classmethod
+    def from_atoms(cls, atoms: bs.AtomArray) -> "ProteinComplex":
+        # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        chain_ids = sorted(np.unique(atoms.chain_id))
+        return cls(
+            [ProteinChain(atoms[atoms.chain_id == chain_id]) for chain_id in chain_ids]
+        )
