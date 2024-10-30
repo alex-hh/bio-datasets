@@ -1,11 +1,6 @@
-"""Biotite atom array feature type for compatibility with HF datasets.
+"""Macromolecular structure feature types for compatibility with HF datasets.
 
-We write an Arrow ExtensionType for the AtomArray.
-A couple of options for this:
-1. Atom14
-2. Backbone
-3. Atom37
-The issue with other formats is that the list of constituents could vary.
+Features are decoded into biotite atom arrays.
 """
 import gzip
 import os
@@ -394,7 +389,7 @@ class AtomArrayFeature(Feature):
     bonds.
     """
 
-    residue_dictionary: ResidueDictionary
+    residue_dictionary: Union[ResidueDictionary, Dict]
     drop_sidechains: ClassVar[bool] = False
     requires_encoding: bool = True
     requires_decoding: bool = True
@@ -460,9 +455,14 @@ class AtomArrayFeature(Feature):
     def __post_init__(self):
         # init the StructFeature - since it inherits from dict, pa type inference is automatic (via get_nested_type)
         self._features = self._make_features_dict()
+        self.deserialize()
 
     def __call__(self):
         return get_nested_type(self._features)
+
+    def deserialize(self):
+        if isinstance(self.residue_dictionary, dict):
+            self.residue_dictionary = ResidueDictionary(**self.residue_dictionary)
 
     @property
     def required_keys(self):
@@ -536,7 +536,7 @@ class AtomArrayFeature(Feature):
                 "coords": value.coord,
                 # it's useful to store numeric index for vectorised decoding etc.
                 "restype_index": self.residue_dictionary.resname_to_index(
-                    value.res_name
+                    value.res_name[residue_starts]
                 ),
             }
             if not self.all_atoms_present:
@@ -643,7 +643,10 @@ class AtomArrayFeature(Feature):
                 chain_id = np.full(len(restype_index), self.chain_id)
                 del value["chain_id"]
             atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
-                restype_index, chain_id, backbone_only=self.drop_sidechains
+                restype_index,
+                residue_dictionary=self.residue_dictionary,
+                chain_id=chain_id,
+                backbone_only=self.drop_sidechains,
             )
             residue_index = (
                 np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
@@ -926,6 +929,14 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     _type: str = field(
         default="ProteinAtomArrayFeature", init=False, repr=False
     )  # registered feature name
+
+    def deserialize(self):
+        if isinstance(self.residue_dictionary, dict):
+            self.residue_dictionary = ProteinDictionary(**self.residue_dictionary)
+        else:
+            assert isinstance(
+                self.residue_dictionary, ProteinDictionary
+            ), "residue_dictionary must be a ProteinDictionary"
 
     @classmethod
     def from_preset(cls, preset: str, **kwargs):
