@@ -265,8 +265,6 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
-            exclude_hydrogens=exclude_hydrogens,
-            standardisation_kwargs=standardisation_kwargs,
         )
 
     @property
