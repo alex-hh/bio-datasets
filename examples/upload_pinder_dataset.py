@@ -622,6 +622,7 @@ if __name__ == "__main__":
             index = index.groupby("cluster_id").head(1)
 
     cluster_ids = list(index.cluster_id.unique())
+    protein_dict = ProteinDictionary()
     print(f"Pinder dataset: {len(cluster_ids)} clusters; {len(index)} systems")
 
     # TODO: decide on appropriate metadata (probably most of stuff from metadata...)
@@ -630,11 +631,12 @@ if __name__ == "__main__":
             "id": Value("string"),
             "cluster_id": Value("string"),
             "pdb_id": Value("string"),
-            "complex": ProteinAtomArrayFeature(with_res_id=True),
-            "apo_receptor": ProteinAtomArrayFeature(with_res_id=True),
-            "apo_ligand": ProteinAtomArrayFeature(with_res_id=True),
-            "pred_receptor": ProteinAtomArrayFeature(with_res_id=True),
-            "pred_ligand": ProteinAtomArrayFeature(with_res_id=True),
+            # store res id because we keep pinder numbering for uniprot mapping
+            "complex": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
+            "apo_receptor": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
+            "apo_ligand": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
+            "pred_receptor": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
+            "pred_ligand": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
             "receptor_uniprot_accession": Value("string"),
             "ligand_uniprot_accession": Value("string"),
             "receptor_uniprot_seq": Value("string"),
