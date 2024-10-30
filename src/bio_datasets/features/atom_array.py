@@ -41,6 +41,7 @@ from bio_datasets.structure import (
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
+from bio_datasets.structure.protein import ProteinDictionary
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts_mask
 
@@ -311,36 +312,10 @@ def load_structure_from_file_dict(
 
 
 # n.b. metadata like chain_id, pdb_id, etc. should be stored separately
-@dataclass
-class _AtomArrayFeatureMixin:
-    with_box: bool = False
-    with_bonds: bool = False
-    with_occupancy: bool = False
-    with_b_factor: bool = False
-    with_res_id: bool = False  # can be inferred...
-    with_atom_id: bool = False
-    with_charge: bool = False
-    with_element: bool = False
-    with_ins_code: bool = False
-    with_hetero: bool = False
-
-    @property
-    def extra_fields(self):
-        # values that can be passed to biotite load_structure
-        extra_fields = []
-        if self.with_occupancy:
-            extra_fields.append("occupancy")
-        if self.with_b_factor:
-            extra_fields.append("b_factor")
-        if self.with_atom_id:
-            extra_fields.append("atom_id")
-        if self.with_charge:
-            extra_fields.append("charge")
-        return extra_fields
 
 
 @dataclass
-class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
+class AtomArrayFeature(Feature):
     """
     AtomArray [`Feature`] to read macromolecular atomic structure data from a PDB or CIF file.
 
@@ -433,6 +408,16 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
     chain_id: Optional[
         str
     ] = None  # single chain id - means we will intepret structure as a single chain
+    with_box: bool = False
+    with_bonds: bool = False
+    with_occupancy: bool = False
+    with_b_factor: bool = False
+    with_res_id: bool = False  # can be inferred...
+    with_atom_id: bool = False
+    with_charge: bool = False
+    with_element: bool = False
+    with_ins_code: bool = False
+    with_hetero: bool = False
     id: Optional[str] = None
     # Automatically constructed
     _type: str = field(
@@ -487,6 +472,20 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         if self.with_bonds:
             required_keys.append("bonds")
         return required_keys
+
+    @property
+    def extra_fields(self):
+        # values that can be passed to biotite load_structure
+        extra_fields = []
+        if self.with_occupancy:
+            extra_fields.append("occupancy")
+        if self.with_b_factor:
+            extra_fields.append("b_factor")
+        if self.with_atom_id:
+            extra_fields.append("atom_id")
+        if self.with_charge:
+            extra_fields.append("charge")
+        return extra_fields
 
     def cast_storage(self, array: pa.StructArray) -> pa.StructArray:
         array_fields = {field.name for field in array.type}
@@ -693,7 +692,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
 
 
 @dataclass
-class StructureFeature(_AtomArrayFeatureMixin, Feature):
+class StructureFeature(Feature):
     """Structure [`Feature`] to read (bio)molecular atomic structure data from supported file types.
     The file contents are serialized as bytes, file path and file type within an Arrow table.
     The file contents are automatically decoded to a biotite AtomArray (if mode=="array") or a
@@ -726,6 +725,10 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
     requires_decoding: bool = True
     decode: bool = True
     id: Optional[str] = None
+    with_occupancy: bool = False
+    with_b_factor: bool = False
+    with_atom_id: bool = False
+    with_charge: bool = False
     encode_with_foldcomp: bool = False
     pa_type: ClassVar[Any] = pa.struct(
         {"bytes": pa.binary(), "path": pa.string(), "type": pa.string()}
@@ -734,6 +737,20 @@ class StructureFeature(_AtomArrayFeatureMixin, Feature):
 
     def __call__(self):
         return self.pa_type
+
+    @property
+    def extra_fields(self):
+        # values that can be passed to biotite load_structure
+        extra_fields = []
+        if self.with_occupancy:
+            extra_fields.append("occupancy")
+        if self.with_b_factor:
+            extra_fields.append("b_factor")
+        if self.with_atom_id:
+            extra_fields.append("atom_id")
+        if self.with_charge:
+            extra_fields.append("charge")
+        return extra_fields
 
     def encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
         """Encode example into a format for Arrow.
@@ -913,7 +930,9 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     @classmethod
     def from_preset(cls, preset: str, **kwargs):
         if preset == "afdb":
+            residue_dictionary = ProteinDictionary()
             return cls(
+                residue_dictionary=residue_dictionary,
                 with_b_factor=True,
                 b_factor_is_plddt=True,
                 # b_factor_dtype="uint8"
@@ -924,7 +943,13 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 **kwargs,
             )
         elif preset == "pdb":
-            return cls(with_b_factor=False, coords_dtype="float16", **kwargs)
+            residue_dictionary = ProteinDictionary()
+            return cls(
+                residue_dictionary=residue_dictionary,
+                with_b_factor=False,
+                coords_dtype="float16",
+                **kwargs,
+            )
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
