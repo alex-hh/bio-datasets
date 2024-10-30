@@ -42,7 +42,7 @@ from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
 from bio_datasets.structure.protein import constants as protein_constants
-from bio_datasets.structure.residue import get_residue_starts_mask
+from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts_mask
 
 if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
@@ -419,6 +419,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
     bonds.
     """
 
+    residue_dictionary: ResidueDictionary
     drop_sidechains: ClassVar[bool] = False
     requires_encoding: bool = True
     requires_decoding: bool = True
@@ -441,7 +442,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
     def _make_features_dict(self):
         features = [
             ("coords", Array2D((None, 3), self.coords_dtype)),
-            ("aa_index", Array1D((None,), "uint8")),
+            ("restype_index", Array1D((None,), "uint8")),
             ("chain_id", Array1D((None,), "string")),
         ]
         if not self.all_atoms_present:
@@ -502,16 +503,14 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         )
 
     def encode_example(
-        self, value: Union[bs.AtomArray, dict], is_standardised: bool = False
+        self,
+        value: Union[bs.AtomArray, Dict, Biomolecule],
+        is_standardised: bool = False,
     ) -> dict:
-        if self.all_atoms_present:
-            assert (
-                is_standardised
-                or isinstance(value, Biomolecule)
-                and value.is_standardised
-            )
         if isinstance(value, Biomolecule):
-            return super().encode_example(value.atoms, is_standardised=True)
+            return self.encode_example(
+                value.atoms, is_standardised=value.is_standardised
+            )
         if isinstance(value, dict):
             if "bytes" in value or "path" in value or "type" in value:
                 # if it's already encoded, we don't need to encode it again
@@ -521,14 +520,11 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                 return self.encode_example(struct)
             if all([attr in value for attr in self.required_keys]):
                 return value
-            if "sequence" in value:
-                value = atom_array_from_dict(value)
             else:
-                raise ValueError(
-                    "Cannot encode dict without sequence or (bytes/path/type)"
-                )
-            return self.encode_example(value)
+                raise ValueError(f"Expected keys bytes/path/type in dict")
         elif isinstance(value, bs.AtomArray):
+            if self.all_atoms_present and not is_standardised:
+                value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
             residue_starts = get_residue_starts(value)
             # if len(value) > 65535:
             #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
@@ -539,13 +535,9 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                 )
             atom_array_struct = {
                 "coords": value.coord,
-                "aa_index": np.array(
-                    [
-                        protein_constants.restype_order_with_x[
-                            protein_constants.restype_3to1[res_name]
-                        ]
-                        for res_name in value.res_name[residue_starts]
-                    ]
+                # it's useful to store numeric index for vectorised decoding etc.
+                "restype_index": self.residue_dictionary.resname_to_index(
+                    value.res_name
                 ),
             }
             if not self.all_atoms_present:
@@ -645,14 +637,14 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
         # TODO: optimise this...if we set format to numpy, everything is a numpy array which should be ideal
         num_atoms = len(value["coords"])
         if self.all_atoms_present:
-            aa_index = value.pop("aa_index")
+            restype_index = value.pop("restype_index")
             if self.chain_id is None:
                 chain_id = value.pop("chain_id")  # residue-level annotation
             else:
-                chain_id = np.full(len(aa_index), self.chain_id)
+                chain_id = np.full(len(restype_index), self.chain_id)
                 del value["chain_id"]
             atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
-                aa_index, chain_id, backbone_only=self.drop_sidechains
+                restype_index, chain_id, backbone_only=self.drop_sidechains
             )
             residue_index = (
                 np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
@@ -668,13 +660,16 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
                 atoms.set_annotation("res_id", value.pop("res_id")[residue_index])
             else:
                 atoms.set_annotation("res_id", residue_index + 1)  # 1-based residue ids
-            atoms.set_annotation("aa_index", value.pop("aa_index")[residue_index])
+            atoms.set_annotation(
+                "restype_index", value.pop("restype_index")[residue_index]
+            )
             if "chain_id" in value and self.chain_id is None:
                 atoms.set_annotation("chain_id", value.pop("chain_id")[residue_index])
             elif self.chain_id is not None:
                 atoms.set_annotation("chain_id", np.full(num_atoms, self.chain_id))
             atoms.set_annotation(
-                "res_name", np.array(protein_constants.resnames)[atoms.aa_index]
+                "res_name",
+                np.array(self.residue_dictionary.residue_names)[atoms.restype_index],
             )
 
         if self.b_factor_is_plddt and "b_factor" in value:
@@ -939,6 +934,9 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         is_standardised: bool = False,
     ) -> dict:
         # TODO: share this code
+        if isinstance(value, dict) and "sequence" in value:
+            value = atom_array_from_dict(value)
+            return self.encode_example(value)
         if isinstance(value, ProteinMixin):
             # TODO: switch to extracting backbone.
             if self.drop_sidechains:
@@ -956,7 +954,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 value = value[filter_amino_acids(value)]
             if self.drop_sidechains:
                 backbone_mask = np.isin(
-                    value.atom_name, protein_constants.BACKBONE_ATOMS
+                    value.atom_name, self.residue_dictionary.backbone_atoms
                 )
                 value = value[backbone_mask]
             return super().encode_example(value)
