@@ -632,11 +632,21 @@ if __name__ == "__main__":
             "cluster_id": Value("string"),
             "pdb_id": Value("string"),
             # store res id because we keep pinder numbering for uniprot mapping
-            "complex": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
-            "apo_receptor": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
-            "apo_ligand": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
-            "pred_receptor": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
-            "pred_ligand": ProteinAtomArrayFeature(residue_dictionary=protein_dict, with_res_id=True),
+            "complex": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "apo_receptor": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "apo_ligand": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "pred_receptor": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "pred_ligand": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
             "receptor_uniprot_accession": Value("string"),
             "ligand_uniprot_accession": Value("string"),
             "receptor_uniprot_seq": Value("string"),
