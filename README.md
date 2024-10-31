@@ -53,7 +53,7 @@ ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure
 print(type(ex["structure"]))
 ```
 ```
-<class 'bio_datasets.protein.ProteinChain'>
+<class 'bio_datasets.structure.protein.protein.ProteinChain'>
 ```
 
 That's it: when you access data from a dataset with preset Bio Datasets feature types, the datapoints that it returns will be Python dictionaries containing your Protein data formatted as a `bio_datasets.protein.ProteinChain` object (basically a biotite AtomArray with some added convenience methods for Protein ML.)
@@ -65,7 +65,8 @@ print(dataset.info.features)
 
 ```
 ```
-{'name': Value(dtype='string', id=None), 'structure': ProteinStructureFeature(with_box=False, with_bonds=False, with_occupancy=False, with_b_factor=False, with_res_id=False, with_atom_id=False, with_charge=False, with_element=False, with_ins_code=False, with_hetero=False, requires_encoding=True, requires_decoding=True, decode=True, id=None, encode_with_foldcomp=False)}
+{'name': Value(dtype='string', id=None),
+ 'structure': ProteinStructureFeature(requires_encoding=True, requires_decoding=True, decode=True, id=None, with_occupancy=False, with_b_factor=True, with_atom_id=False, with_charge=False, encode_with_foldcomp=False)}
 ```
 
 To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when bio_datasets is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format) fields when not.
