@@ -21,6 +21,12 @@ class ResidueDictionary:
     def __post_init__(self):
         assert len(self.residue_names) == len(self.residue_types)
 
+    def __str__(self):
+        return (
+            f"ResidueDictionary ({len(self.residue_names)} residue types, "
+            f"{len(self.atom_types)} atom types)"
+        )
+
     @property
     def residue_sizes(self):
         return np.array(

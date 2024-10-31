@@ -195,13 +195,17 @@ class Biomolecule(Molecule):
         ), "Elements must be present to exclude hydrogens"
         atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
         residue_starts = get_residue_starts(atoms)
-        atoms.set_annotation(
-            "atomtype_index",
-            map_categories_to_indices(atoms.atom_name, residue_dictionary.atom_types),
-        )
-        atoms.set_annotation(
-            "restype_index", residue_dictionary.resname_to_index(atoms.res_name)
-        )
+        if "atomtype_index" not in atoms._annot:
+            atoms.set_annotation(
+                "atomtype_index",
+                map_categories_to_indices(
+                    atoms.atom_name, residue_dictionary.atom_types
+                ),
+            )
+        if "restype_index" not in atoms._annot:
+            atoms.set_annotation(
+                "restype_index", residue_dictionary.resname_to_index(atoms.res_name)
+            )
         atoms.set_annotation(
             "res_index",
             np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1,

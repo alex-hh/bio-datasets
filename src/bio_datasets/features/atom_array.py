@@ -389,7 +389,7 @@ class AtomArrayFeature(Feature):
     bonds.
     """
 
-    residue_dictionary: Union[ResidueDictionary, Dict]
+    residue_dictionary: Optional[Union[ResidueDictionary, Dict]] = None
     drop_sidechains: ClassVar[bool] = False
     requires_encoding: bool = True
     requires_decoding: bool = True
@@ -420,9 +420,14 @@ class AtomArrayFeature(Feature):
     )  # registered feature name
 
     def _make_features_dict(self):
+        # TODO: maybe just don't ever store restype_index?
+        if self.residue_dictionary is not None:
+            residue_identifier = ("restype_index", Array1D((None,), "uint8"))
+        else:
+            residue_identifier = ("res_name", Array1D((None,), "string"))
         features = [
             ("coords", Array2D((None, 3), self.coords_dtype)),
-            ("restype_index", Array1D((None,), "uint8")),
+            residue_identifier,
             ("chain_id", Array1D((None,), "string")),
         ]
         if not self.all_atoms_present:
@@ -454,6 +459,10 @@ class AtomArrayFeature(Feature):
 
     def __post_init__(self):
         # init the StructFeature - since it inherits from dict, pa type inference is automatic (via get_nested_type)
+        if self.all_atoms_present:
+            assert (
+                self.residue_dictionary is not None
+            ), "residue_dictionary is required when all_atoms_present is True"
         self._features = self._make_features_dict()
         self.deserialize()
 
@@ -523,6 +532,7 @@ class AtomArrayFeature(Feature):
                 raise ValueError(f"Expected keys bytes/path/type in dict")
         elif isinstance(value, bs.AtomArray):
             if self.all_atoms_present and not is_standardised:
+                assert self.residue_dictionary is not None
                 value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
             residue_starts = get_residue_starts(value)
             # if len(value) > 65535:
@@ -534,11 +544,16 @@ class AtomArrayFeature(Feature):
                 )
             atom_array_struct = {
                 "coords": value.coord,
-                # it's useful to store numeric index for vectorised decoding etc.
-                "restype_index": self.residue_dictionary.resname_to_index(
-                    value.res_name[residue_starts]
-                ),
             }
+            if self.residue_dictionary is not None:
+                # it's useful to store numeric index for vectorised decoding, complete atom array creation, etc
+                atom_array_struct[
+                    "restype_index"
+                ] = self.residue_dictionary.resname_to_index(
+                    value.res_name[residue_starts]
+                )
+            else:
+                atom_array_struct["res_name"] = value.res_name[residue_starts]
             if not self.all_atoms_present:
                 atom_array_struct["residue_starts"] = residue_starts
                 atom_array_struct["atom_name"] = value.atom_name
@@ -662,17 +677,22 @@ class AtomArrayFeature(Feature):
                 atoms.set_annotation("res_id", value.pop("res_id")[residue_index])
             else:
                 atoms.set_annotation("res_id", residue_index + 1)  # 1-based residue ids
-            atoms.set_annotation(
-                "restype_index", value.pop("restype_index")[residue_index]
-            )
+            if self.residue_dictionary is not None:
+                atoms.set_annotation(
+                    "restype_index", value.pop("restype_index")[residue_index]
+                )
+                atoms.set_annotation(
+                    "res_name",
+                    np.array(self.residue_dictionary.residue_names)[
+                        atoms.restype_index
+                    ],
+                )
+            else:
+                atoms.set_annotation("res_name", value.pop("res_name")[residue_index])
             if "chain_id" in value and self.chain_id is None:
                 atoms.set_annotation("chain_id", value.pop("chain_id")[residue_index])
             elif self.chain_id is not None:
                 atoms.set_annotation("chain_id", np.full(num_atoms, self.chain_id))
-            atoms.set_annotation(
-                "res_name",
-                np.array(self.residue_dictionary.residue_names)[atoms.restype_index],
-            )
 
         if self.b_factor_is_plddt and "b_factor" in value:
             atoms.set_annotation("b_factor", value.pop("b_factor")[residue_index])
