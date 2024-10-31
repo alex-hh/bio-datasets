@@ -10,11 +10,11 @@ def test_encode_decode_atom_array(afdb_atom_array):
     We encode residue-level annotations separately to the atom coords so
     important to check that they get decoded back to the atom array correctly.
     """
-    feat = AtomArrayFeature()
+    prot_dict = ProteinDictionary()
+    feat = AtomArrayFeature(residue_dictionary=prot_dict)
     encoded = feat.encode_example(afdb_atom_array)
     bs_sequences, _ = to_sequence(afdb_atom_array)
-    prot_dict = ProteinDictionary()
-    assert prot_dict.decode_restype_index(encoded["aa_index"]) == str(bs_sequences[0])
+    assert prot_dict.decode_restype_index(encoded["restype_index"]) == str(bs_sequences[0])
     decoded = feat.decode_example(encoded, prot_dict)
     assert np.all(decoded.coord == afdb_atom_array.coord)
     assert np.all(decoded.atom_name == afdb_atom_array.atom_name)
