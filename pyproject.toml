@@ -15,6 +15,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
+pytest
 biotite = ">=1.0.0"
 foldcomp = ">=0.0.7"
 datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes"}
