@@ -20,6 +20,12 @@ class ResidueDictionary:
 
     def __post_init__(self):
         assert len(self.residue_names) == len(self.residue_types)
+        if self.conversions is not None:
+            for conversion in self.conversions:
+                # tuples get converted to lists during serialization so we need to convert them back for eq checks
+                conversion["atom_swaps"] = [
+                    tuple(swaps) for swaps in conversion["atom_swaps"]
+                ]
 
     def __str__(self):
         return (

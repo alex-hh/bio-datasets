@@ -497,17 +497,25 @@ class AtomArrayFeature(Feature):
         return extra_fields
 
     def cast_storage(self, array: pa.StructArray) -> pa.StructArray:
-        array_fields = {field.name for field in array.type}
-        # c.f. cast_array_to_feature: since we don't inherit from dict, we reproduce the logic here
-        null_array = pa.array([None] * len(array))
-        arrays = [
-            cast_array_to_feature(
-                array.field(name) if name in array_fields else null_array, subfeature
-            )
-            for name, subfeature in self._features.items()
-        ]
+        null_mask = array.is_null()
+        if null_mask.sum() == len(null_mask):
+            null_array = pa.array([None] * len(array))
+            arrays = [
+                cast_array_to_feature(null_array, subfeature)
+                for _, subfeature in self._features.items()
+            ]
+        else:
+            array_fields = {field.name for field in array.type}
+            # c.f. cast_array_to_feature: since we don't inherit from dict, we reproduce the logic here
+            arrays = [
+                cast_array_to_feature(
+                    array.field(name) if name in array_fields else null_array,
+                    subfeature,
+                )
+                for name, subfeature in self._features.items()
+            ]
         return pa.StructArray.from_arrays(
-            arrays, names=list(self._features), mask=array.is_null()
+            arrays, names=list(self._features), mask=null_mask
         )
 
     def encode_example(
