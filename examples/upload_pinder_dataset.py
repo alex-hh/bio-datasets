@@ -260,9 +260,9 @@ class PinderDataset:
         target_struct,
         mode: str = "ref",  # "ref" or "intersection"
     ):
-        """TODO: test that we get same result as applying get_seq_aligned_structure
+        """Align structures, either target to reference, or both to each other.
 
-        Source: https://github.com/pinder-org/pinder/blob/8ad1ead7a174736635c13fa7266d9ca54cf9f44e/src/pinder-core/pinder/core/loader/structure.py#L146
+        If using intersection, results should be the same as applying get_seq_aligned_structures.
         """
         # N.B. pinder utils have stuff for handling multi-chain cases, so we need to assert that these are single-chain structures.
         ref_chains = bs.get_chains(ref_struct.atom_array)

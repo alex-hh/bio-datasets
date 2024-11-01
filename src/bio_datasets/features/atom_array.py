@@ -463,8 +463,8 @@ class AtomArrayFeature(Feature):
             assert (
                 self.residue_dictionary is not None
             ), "residue_dictionary is required when all_atoms_present is True"
-        self._features = self._make_features_dict()
         self.deserialize()
+        self._features = self._make_features_dict()
 
     def __call__(self):
         return get_nested_type(self._features)
@@ -538,7 +538,6 @@ class AtomArrayFeature(Feature):
             # if len(value) > 65535:
             #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
             if len(residue_starts) > 65535:
-                # print(len(residue_starts))
                 raise ValueError(
                     "AtomArray too large to fit in uint16 (residue starts)"
                 )
@@ -953,7 +952,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     def deserialize(self):
         if isinstance(self.residue_dictionary, dict):
             self.residue_dictionary = ProteinDictionary(**self.residue_dictionary)
-        else:
+        elif self.all_atoms_present:
             assert isinstance(
                 self.residue_dictionary, ProteinDictionary
             ), "residue_dictionary must be a ProteinDictionary"
