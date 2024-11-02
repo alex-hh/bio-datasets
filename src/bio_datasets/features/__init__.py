@@ -16,12 +16,13 @@ from .atom_array import (
     ProteinStructureFeature,
     StructureFeature,
 )
-from .features import Features
+from .features import CustomFeature, Features
 
 _BIO_FEATURE_TYPES: Dict[str, FeatureType] = {}
 
 
 def register_bio_feature(feature_cls):
+    assert issubclass(feature_cls, CustomFeature)
     _BIO_FEATURE_TYPES[feature_cls.__name__] = feature_cls
     register_feature(feature_cls, feature_cls.__name__)
 

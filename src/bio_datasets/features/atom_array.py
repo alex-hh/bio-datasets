@@ -49,6 +49,7 @@ if bio_config.FOLDCOMP_AVAILABLE:
 if bio_config.FASTPDB_AVAILABLE:
     import fastpdb
 
+from .features import CustomFeature
 
 FILE_TYPE_TO_EXT = {
     "pdb": "pdb",
@@ -339,7 +340,7 @@ class _AtomArrayFeatureMixin:
 
 
 @dataclass
-class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
+class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
     """
     AtomArray [`Feature`] to read macromolecular atomic structure data from a PDB or CIF file.
 
@@ -699,7 +700,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, Feature):
 
 
 @dataclass
-class StructureFeature(_AtomArrayFeatureMixin, Feature):
+class StructureFeature(_AtomArrayFeatureMixin, CustomFeature):
     """Structure [`Feature`] to read (bio)molecular atomic structure data from supported file types.
     The file contents are serialized as bytes, file path and file type within an Arrow table.
     The file contents are automatically decoded to a biotite AtomArray (if mode=="array") or a

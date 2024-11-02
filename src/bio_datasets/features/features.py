@@ -1,10 +1,23 @@
 import json
 from collections import OrderedDict
+from typing import ClassVar, Dict, Optional, Union
 
+import numpy as np
 import pyarrow as pa
+from datasets import (
+    Audio,
+    ClassLabel,
+    Image,
+    LargeList,
+    Sequence,
+    TranslationVariableLanguages,
+    Value,
+    _ArrayXD,
+)
 from datasets.features.features import (
     Feature,
     Features,
+    _check_non_null_non_empty_recursive,
     generate_from_arrow_type,
     get_nested_type,
 )
@@ -23,12 +36,230 @@ class StructFeature(Feature, OrderedDict):
         return pa_type
 
 
+class CustomFeature:
+    """
+    Base class for feature types like Audio, Image, ClassLabel, etc that require special treatment (encoding/decoding).
+    """
+
+    requires_encoding: ClassVar[bool] = False
+    requires_decoding: ClassVar[bool] = False
+
+    def encode_example(self, example):
+        if self.requires_encoding:
+            return self._encode_example(example)
+        return example
+
+    def _encode_example(self, example):
+        raise NotImplementedError(
+            "Should be implemented by child class if `requires_encoding` is True"
+        )
+
+    def decode_example(self, example):
+        if self.requires_decoding:
+            return self._decode_example(example)
+        return example
+
+    def _decode_example(self, example):
+        raise NotImplementedError(
+            "Should be implemented by child class if `requires_decoding` is True"
+        )
+
+
+def encode_nested_example(schema, obj, is_nested: bool = False):
+    """Encode a nested example.
+    This is used since some features (in particular ClassLabel) have some logic during encoding.
+
+    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that is not None or empty (if it is a sequence) has to be encoded.
+    If the first element needs to be encoded, then all the elements of the list will be encoded, otherwise they'll stay the same.
+    """
+
+    # Nested structures: we allow dict, list/tuples, sequences
+    if isinstance(schema, dict):
+        if not is_nested and obj is None:
+            raise ValueError("Got None but expected a dictionary instead")
+        return (
+            {
+                k: encode_nested_example(schema[k], obj.get(k), is_nested=True)
+                for k in schema
+            }
+            if obj is not None
+            else None
+        )
+
+    elif isinstance(schema, (list, tuple)):
+        sub_schema = schema[0]
+        if obj is None:
+            return None
+        elif isinstance(obj, np.ndarray):
+            return encode_nested_example(schema, obj.tolist())
+        else:
+            if len(obj) > 0:
+                for first_elmt in obj:
+                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
+                        break
+                if (
+                    encode_nested_example(sub_schema, first_elmt, is_nested=True)
+                    != first_elmt
+                ):
+                    return [
+                        encode_nested_example(sub_schema, o, is_nested=True)
+                        for o in obj
+                    ]
+            return list(obj)
+
+    elif isinstance(schema, LargeList):
+        if obj is None:
+            return None
+        else:
+            if len(obj) > 0:
+                sub_schema = schema.feature
+                for first_elmt in obj:
+                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
+                        break
+                if (
+                    encode_nested_example(sub_schema, first_elmt, is_nested=True)
+                    != first_elmt
+                ):
+                    return [
+                        encode_nested_example(sub_schema, o, is_nested=True)
+                        for o in obj
+                    ]
+            return list(obj)
+    elif isinstance(schema, Sequence):
+        if obj is None:
+            return None
+        # We allow to reverse list of dict => dict of list for compatibility with tfds
+        if isinstance(schema.feature, dict):
+            # dict of list to fill
+            list_dict = {}
+            if isinstance(obj, (list, tuple)):
+                # obj is a list of dict
+                for k in schema.feature:
+                    list_dict[k] = [
+                        encode_nested_example(
+                            schema.feature[k], o.get(k), is_nested=True
+                        )
+                        for o in obj
+                    ]
+                return list_dict
+            else:
+                # obj is a single dict
+                for k in schema.feature:
+                    list_dict[k] = (
+                        [
+                            encode_nested_example(schema.feature[k], o, is_nested=True)
+                            for o in obj[k]
+                        ]
+                        if k in obj
+                        else None
+                    )
+                return list_dict
+        # schema.feature is not a dict
+        if isinstance(obj, str):  # don't interpret a string as a list
+            raise ValueError(f"Got a string but expected a list instead: '{obj}'")
+        else:
+            if len(obj) > 0:
+                for first_elmt in obj:
+                    if _check_non_null_non_empty_recursive(first_elmt, schema.feature):
+                        break
+                # be careful when comparing tensors here
+                if (
+                    not isinstance(first_elmt, list)
+                    or encode_nested_example(schema.feature, first_elmt, is_nested=True)
+                    != first_elmt
+                ):
+                    return [
+                        encode_nested_example(schema.feature, o, is_nested=True)
+                        for o in obj
+                    ]
+            return list(obj)
+
+    # Object with special encoding:
+    # ClassLabel will convert from string to int, TranslationVariableLanguages does some checks
+    elif isinstance(
+        schema,
+        (Audio, Image, ClassLabel, TranslationVariableLanguages, Value, _ArrayXD),
+    ):
+        return schema.encode_example(obj) if obj is not None else None
+    # TODO: handle video in datasets version-aware way
+    # Custom features
+    elif isinstance(schema, CustomFeature) and schema.requires_encoding:
+        return schema.encode_example(obj) if obj is not None else None
+    # Other object should be directly convertible to a native Arrow type (like Translation and Translation)
+    return obj
+
+
+def decode_nested_example(
+    schema, obj, token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None
+):
+    """Decode a nested example.
+    This is used since some features (in particular Audio and Image) have some logic during decoding.
+
+    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that is not None or empty (if it is a sequence) has to be decoded.
+    If the first element needs to be decoded, then all the elements of the list will be decoded, otherwise they'll stay the same.
+    """
+    # Nested structures: we allow dict, list/tuples, sequences
+    if isinstance(schema, dict):
+        return (
+            {
+                k: decode_nested_example(sub_schema, sub_obj)
+                for k, (sub_schema, sub_obj) in zip_dict(schema, obj)
+            }
+            if obj is not None
+            else None
+        )
+    elif isinstance(schema, (list, tuple)):
+        sub_schema = schema[0]
+        if obj is None:
+            return None
+        else:
+            if len(obj) > 0:
+                for first_elmt in obj:
+                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
+                        break
+                if decode_nested_example(sub_schema, first_elmt) != first_elmt:
+                    return [decode_nested_example(sub_schema, o) for o in obj]
+            return list(obj)
+    elif isinstance(schema, LargeList):
+        if obj is None:
+            return None
+        else:
+            sub_schema = schema.feature
+            if len(obj) > 0:
+                for first_elmt in obj:
+                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
+                        break
+                if decode_nested_example(sub_schema, first_elmt) != first_elmt:
+                    return [decode_nested_example(sub_schema, o) for o in obj]
+            return list(obj)
+    elif isinstance(schema, Sequence):
+        # We allow to reverse list of dict => dict of list for compatibility with tfds
+        if isinstance(schema.feature, dict):
+            return {
+                k: decode_nested_example([schema.feature[k]], obj[k])
+                for k in schema.feature
+            }
+        else:
+            return decode_nested_example([schema.feature], obj)
+    # Object with special decoding:
+    elif isinstance(schema, (Audio, Image)):
+        # we pass the token to read and decode files from private repositories in streaming mode
+        if obj is not None and schema.decode:
+            return schema.decode_example(obj, token_per_repo_id=token_per_repo_id)
+    # TODO: handle video in datasets version-aware way
+    # Custom features
+    elif isinstance(schema, CustomFeature) and schema.requires_decoding:
+        # we pass the token to read and decode files from private repositories in streaming mode
+        if obj is not None and schema.decode:
+            return schema.decode_example(obj, token_per_repo_id=token_per_repo_id)
+    return obj
+
+
 # worry is whether just modifying Features is robust enough to changes to the datasets library.
 # but assumption is that we basically just need;
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
-# update_metadata_with_features). 
+# update_metadata_with_features).
 class Features(Features):
-
     @property
     def arrow_schema(self):
         """
@@ -38,7 +269,9 @@ class Features(Features):
             :obj:`pyarrow.Schema`
         """
         hf_metadata = {"info": {"features": self.to_dict()}}
-        return pa.schema(self.type).with_metadata({"huggingface": json.dumps(hf_metadata)})
+        return pa.schema(self.type).with_metadata(
+            {"huggingface": json.dumps(hf_metadata)}
+        )
 
     # TODO: this is where we need to load the bio features.
     @classmethod
@@ -78,7 +311,9 @@ class Features(Features):
                 # list_type:                ->              list_type: int32
                 #   dtype: int32            ->
                 #
-                if isinstance(feature.get(list_type), dict) and list(feature[list_type]) == ["dtype"]:
+                if isinstance(feature.get(list_type), dict) and list(
+                    feature[list_type]
+                ) == ["dtype"]:
                     feature[list_type] = feature[list_type]["dtype"]
 
                 #
@@ -87,7 +322,9 @@ class Features(Features):
                 #   - name: foo             ->                dtype: int32
                 #     dtype: int32          ->
                 #
-                if isinstance(feature.get(list_type), dict) and list(feature[list_type]) == ["struct"]:
+                if isinstance(feature.get(list_type), dict) and list(
+                    feature[list_type]
+                ) == ["struct"]:
                     feature[list_type] = feature[list_type]["struct"]
 
             #
@@ -96,10 +333,15 @@ class Features(Features):
             #   - negative              ->                  '0': negative
             #   - positive              ->                  '1': positive
             #
-            if isinstance(feature.get("class_label"), dict) and isinstance(feature["class_label"].get("names"), list):
+            if isinstance(feature.get("class_label"), dict) and isinstance(
+                feature["class_label"].get("names"), list
+            ):
                 # server-side requirement: keys must be strings
                 feature["class_label"]["names"] = {
-                    str(label_id): label_name for label_id, label_name in enumerate(feature["class_label"]["names"])
+                    str(label_id): label_name
+                    for label_id, label_name in enumerate(
+                        feature["class_label"]["names"]
+                    )
                 }
             return feature
 
@@ -119,7 +361,12 @@ class Features(Features):
                 elif _type:
                     return {"dtype": simplify({camelcase_to_snakecase(_type): obj})}
                 else:
-                    return {"struct": [{"name": name, **to_yaml_inner(_feature)} for name, _feature in obj.items()]}
+                    return {
+                        "struct": [
+                            {"name": name, **to_yaml_inner(_feature)}
+                            for name, _feature in obj.items()
+                        ]
+                    }
             elif isinstance(obj, list):
                 return simplify({"list": simplify(to_yaml_inner(obj[0]))})
             elif isinstance(obj, tuple):
@@ -163,13 +410,19 @@ class Features(Features):
             #     '0': negative              ->               - negative
             #     '1': positive              ->               - positive
             #
-            if isinstance(feature.get("class_label"), dict) and isinstance(feature["class_label"].get("names"), dict):
+            if isinstance(feature.get("class_label"), dict) and isinstance(
+                feature["class_label"].get("names"), dict
+            ):
                 label_ids = sorted(feature["class_label"]["names"], key=int)
-                if label_ids and [int(label_id) for label_id in label_ids] != list(range(int(label_ids[-1]) + 1)):
+                if label_ids and [int(label_id) for label_id in label_ids] != list(
+                    range(int(label_ids[-1]) + 1)
+                ):
                     raise ValueError(
                         f"ClassLabel expected a value for all label ids [0:{int(label_ids[-1]) + 1}] but some ids are missing."
                     )
-                feature["class_label"]["names"] = [feature["class_label"]["names"][label_id] for label_id in label_ids]
+                feature["class_label"]["names"] = [
+                    feature["class_label"]["names"][label_id] for label_id in label_ids
+                ]
             return feature
 
     def encode_example(self, example):
