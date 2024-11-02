@@ -24,7 +24,8 @@ class StructFeature(Feature, OrderedDict):
 
 
 # worry is whether just modifying Features is robust enough to changes to the datasets library.
-# (we also need to modify ArrowWriter to build metadata correctly; and possibly methods like
+# but assumption is that we basically just need;
+# yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
 # update_metadata_with_features). 
 class Features(Features):
 
