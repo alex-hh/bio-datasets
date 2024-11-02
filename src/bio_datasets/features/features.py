@@ -1,39 +1,22 @@
+"""
+Custom features for bio datasets.
+
+Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
+"""
+import copy
 import json
 from collections import OrderedDict
 from typing import ClassVar, Dict, Optional, Union
 
-import numpy as np
 import pyarrow as pa
-from datasets import (
-    Audio,
-    ClassLabel,
-    Image,
-    LargeList,
-    Sequence,
-    TranslationVariableLanguages,
-    Value,
-    _ArrayXD,
-)
+from datasets import Features
 from datasets.features.features import (
-    Feature,
-    Features,
-    _check_non_null_non_empty_recursive,
+    decode_nested_example,
+    encode_nested_example,
     generate_from_arrow_type,
     get_nested_type,
 )
-
-
-# N.B. Image and Audio features could inherit from this.
-class StructFeature(Feature, OrderedDict):
-    """
-    A feature that is a dictionary of features. It will be converted to a pyarrow struct.
-
-    Initialise with a list of (key, Feature) tuples.
-    """
-
-    def __call__(self):
-        pa_type = get_nested_type(self.features)
-        return pa_type
+from datasets.naming import camelcase_to_snakecase, snakecase_to_camelcase
 
 
 class CustomFeature:
@@ -65,6 +48,19 @@ class CustomFeature:
         )
 
 
+# N.B. Image and Audio features could inherit from this.
+class StructFeature(CustomFeature, OrderedDict):
+    """
+    A feature that is a dictionary of features. It will be converted to a pyarrow struct.
+
+    Initialise with a list of (key, Feature) tuples.
+    """
+
+    def __call__(self):
+        pa_type = get_nested_type(self.features)
+        return pa_type
+
+
 def encode_nested_example(schema, obj, is_nested: bool = False):
     """Encode a nested example.
     This is used since some features (in particular ClassLabel) have some logic during encoding.
@@ -72,121 +68,10 @@ def encode_nested_example(schema, obj, is_nested: bool = False):
     To avoid iterating over possibly long lists, it first checks (recursively) if the first element that is not None or empty (if it is a sequence) has to be encoded.
     If the first element needs to be encoded, then all the elements of the list will be encoded, otherwise they'll stay the same.
     """
-
-    # Nested structures: we allow dict, list/tuples, sequences
-    if isinstance(schema, dict):
-        if not is_nested and obj is None:
-            raise ValueError("Got None but expected a dictionary instead")
-        return (
-            {
-                k: encode_nested_example(schema[k], obj.get(k), is_nested=True)
-                for k in schema
-            }
-            if obj is not None
-            else None
-        )
-
-    elif isinstance(schema, (list, tuple)):
-        sub_schema = schema[0]
-        if obj is None:
-            return None
-        elif isinstance(obj, np.ndarray):
-            return encode_nested_example(schema, obj.tolist())
-        else:
-            if len(obj) > 0:
-                for first_elmt in obj:
-                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
-                        break
-                if (
-                    encode_nested_example(sub_schema, first_elmt, is_nested=True)
-                    != first_elmt
-                ):
-                    return [
-                        encode_nested_example(sub_schema, o, is_nested=True)
-                        for o in obj
-                    ]
-            return list(obj)
-
-    elif isinstance(schema, LargeList):
-        if obj is None:
-            return None
-        else:
-            if len(obj) > 0:
-                sub_schema = schema.feature
-                for first_elmt in obj:
-                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
-                        break
-                if (
-                    encode_nested_example(sub_schema, first_elmt, is_nested=True)
-                    != first_elmt
-                ):
-                    return [
-                        encode_nested_example(sub_schema, o, is_nested=True)
-                        for o in obj
-                    ]
-            return list(obj)
-    elif isinstance(schema, Sequence):
-        if obj is None:
-            return None
-        # We allow to reverse list of dict => dict of list for compatibility with tfds
-        if isinstance(schema.feature, dict):
-            # dict of list to fill
-            list_dict = {}
-            if isinstance(obj, (list, tuple)):
-                # obj is a list of dict
-                for k in schema.feature:
-                    list_dict[k] = [
-                        encode_nested_example(
-                            schema.feature[k], o.get(k), is_nested=True
-                        )
-                        for o in obj
-                    ]
-                return list_dict
-            else:
-                # obj is a single dict
-                for k in schema.feature:
-                    list_dict[k] = (
-                        [
-                            encode_nested_example(schema.feature[k], o, is_nested=True)
-                            for o in obj[k]
-                        ]
-                        if k in obj
-                        else None
-                    )
-                return list_dict
-        # schema.feature is not a dict
-        if isinstance(obj, str):  # don't interpret a string as a list
-            raise ValueError(f"Got a string but expected a list instead: '{obj}'")
-        else:
-            if len(obj) > 0:
-                for first_elmt in obj:
-                    if _check_non_null_non_empty_recursive(first_elmt, schema.feature):
-                        break
-                # be careful when comparing tensors here
-                if (
-                    not isinstance(first_elmt, list)
-                    or encode_nested_example(schema.feature, first_elmt, is_nested=True)
-                    != first_elmt
-                ):
-                    return [
-                        encode_nested_example(schema.feature, o, is_nested=True)
-                        for o in obj
-                    ]
-            return list(obj)
-
-    # Object with special encoding:
-    # ClassLabel will convert from string to int, TranslationVariableLanguages does some checks
-    elif isinstance(
-        schema,
-        (Audio, Image, ClassLabel, TranslationVariableLanguages, Value, _ArrayXD),
-    ):
+    if isinstance(schema, CustomFeature) and schema.requires_encoding:
         return schema.encode_example(obj) if obj is not None else None
-    # TODO: handle video in datasets version-aware way
-    # Custom features
-    elif isinstance(schema, CustomFeature) and schema.requires_encoding:
-        return schema.encode_example(obj) if obj is not None else None
-    # Other object should be directly convertible to a native Arrow type (like Translation and Translation)
-    return obj
+    else:
+        return encode_nested_example(schema, obj, is_nested)
 
 
 def decode_nested_example(
@@ -198,61 +83,12 @@ def decode_nested_example(
     To avoid iterating over possibly long lists, it first checks (recursively) if the first element that is not None or empty (if it is a sequence) has to be decoded.
     If the first element needs to be decoded, then all the elements of the list will be decoded, otherwise they'll stay the same.
     """
-    # Nested structures: we allow dict, list/tuples, sequences
-    if isinstance(schema, dict):
-        return (
-            {
-                k: decode_nested_example(sub_schema, sub_obj)
-                for k, (sub_schema, sub_obj) in zip_dict(schema, obj)
-            }
-            if obj is not None
-            else None
-        )
-    elif isinstance(schema, (list, tuple)):
-        sub_schema = schema[0]
-        if obj is None:
-            return None
-        else:
-            if len(obj) > 0:
-                for first_elmt in obj:
-                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
-                        break
-                if decode_nested_example(sub_schema, first_elmt) != first_elmt:
-                    return [decode_nested_example(sub_schema, o) for o in obj]
-            return list(obj)
-    elif isinstance(schema, LargeList):
-        if obj is None:
-            return None
-        else:
-            sub_schema = schema.feature
-            if len(obj) > 0:
-                for first_elmt in obj:
-                    if _check_non_null_non_empty_recursive(first_elmt, sub_schema):
-                        break
-                if decode_nested_example(sub_schema, first_elmt) != first_elmt:
-                    return [decode_nested_example(sub_schema, o) for o in obj]
-            return list(obj)
-    elif isinstance(schema, Sequence):
-        # We allow to reverse list of dict => dict of list for compatibility with tfds
-        if isinstance(schema.feature, dict):
-            return {
-                k: decode_nested_example([schema.feature[k]], obj[k])
-                for k in schema.feature
-            }
-        else:
-            return decode_nested_example([schema.feature], obj)
-    # Object with special decoding:
-    elif isinstance(schema, (Audio, Image)):
+    if isinstance(schema, CustomFeature) and schema.requires_decoding:
         # we pass the token to read and decode files from private repositories in streaming mode
         if obj is not None and schema.decode:
             return schema.decode_example(obj, token_per_repo_id=token_per_repo_id)
-    # TODO: handle video in datasets version-aware way
-    # Custom features
-    elif isinstance(schema, CustomFeature) and schema.requires_decoding:
-        # we pass the token to read and decode files from private repositories in streaming mode
-        if obj is not None and schema.decode:
-            return schema.decode_example(obj, token_per_repo_id=token_per_repo_id)
-    return obj
+    else:
+        return decode_nested_example(schema, obj, token_per_repo_id)
 
 
 # worry is whether just modifying Features is robust enough to changes to the datasets library.
