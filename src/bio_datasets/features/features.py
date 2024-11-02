@@ -16,7 +16,7 @@ from datasets.features.features import (
     generate_from_arrow_type,
     get_nested_type,
 )
-from datasets.naming import camelcase_to_snakecase, snakecase_to_camelcase
+from datasets.naming import camelcase_to_snakecase
 
 
 class CustomFeature:
@@ -94,6 +94,7 @@ def decode_nested_example(
 # worry is whether just modifying Features is robust enough to changes to the datasets library.
 # but assumption is that we basically just need;
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
+# issue here is that it might not be possible to inject two different fields into yaml_data["features"]
 # update_metadata_with_features).
 class Features(Features):
     @property
