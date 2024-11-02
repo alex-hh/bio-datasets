@@ -3,10 +3,12 @@ __all__ = [
     "StructureFeature",
     "ProteinAtomArrayFeature",
     "ProteinStructureFeature",
+    "Features",
 ]
 
 from typing import Dict
-from datasets.features.features import register_feature, FeatureType
+
+from datasets.features.features import FeatureType, register_feature
 
 from .atom_array import (
     AtomArrayFeature,
@@ -14,7 +16,7 @@ from .atom_array import (
     ProteinStructureFeature,
     StructureFeature,
 )
-
+from .features import Features
 
 _BIO_FEATURE_TYPES: Dict[str, FeatureType] = {}
 

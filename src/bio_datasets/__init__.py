@@ -1,5 +1,6 @@
 import inspect
 
+import datasets
 from datasets.packaged_modules import _PACKAGED_DATASETS_MODULES, _hash_python_lines
 
 from .features import *
