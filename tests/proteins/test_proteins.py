@@ -2,19 +2,19 @@ import numpy as np
 from biotite.structure.filter import filter_amino_acids
 from biotite.structure.residues import residue_iter
 
-from bio_datasets.protein import Protein
-from bio_datasets.protein import constants as protein_constants
+from bio_datasets.structure.protein import ProteinChain
+from bio_datasets.structure.protein import constants as protein_constants
 
 
-def test_residue_atom_order(pdb_atom_array):
+def test_residue_atom_order(pdb_atoms_top7):
     total_residues = 0
     correct_residues = 0
-    amino_acid_filter = filter_amino_acids(pdb_atom_array)
-    pdb_atom_array = pdb_atom_array[amino_acid_filter]
+    amino_acid_filter = filter_amino_acids(pdb_atoms_top7)
+    pdb_atom_array = pdb_atoms_top7[amino_acid_filter]
     for residue_atoms in residue_iter(pdb_atom_array):
         atom_names = residue_atoms.atom_name
         expected_atom_names = np.array(
-            protein_constants.residue_atoms_ordered[residue_atoms.res_name[0]]
+            protein_constants.residue_atoms[residue_atoms.res_name[0]]
         )
         total_residues += 1
         if len(atom_names) != len(expected_atom_names):
@@ -23,11 +23,10 @@ def test_residue_atom_order(pdb_atom_array):
         assert (
             np.all(
                 atom_names
-                == np.array(
-                    protein_constants.residue_atoms_ordered[residue_atoms.res_name[0]]
-                )
+                == np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])
             ),
-            f"Observed: {atom_names} != Expected: {np.array(protein_constants.residue_atoms_ordered[residue_atoms.res_name[0]])}",
+            f"Observed: {atom_names} != Expected: "
+            f"{np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])}",
         )
         correct_residues += 1
     assert correct_residues / total_residues > 0.5
@@ -39,7 +38,7 @@ def test_residue_atom_order(pdb_atom_array):
 #     test_residue_atom_order(protein.atoms)
 
 
-def test_fill_missing_atoms(pdb_atom_array):
+def test_fill_missing_atoms(pdb_atoms_top7):
     """
     REMARK 465 MISSING RESIDUES
     REMARK 465 THE FOLLOWING RESIDUES WERE NOT LOCATED IN THE
@@ -81,16 +80,16 @@ def test_fill_missing_atoms(pdb_atom_array):
     REMARK 470     GLU A  73    CG   CD   OE1  OE2
 
     """
-    pdb_atom_array = pdb_atom_array[filter_amino_acids(pdb_atom_array)]
+    pdb_atom_array = pdb_atoms_top7[filter_amino_acids(pdb_atoms_top7)]
     # 1qys has missing atoms
-    protein = Protein(pdb_atom_array)
+    protein = ProteinChain(pdb_atom_array)
     # todo check for nans
     for raw_residue, filled_residue in zip(
         residue_iter(pdb_atom_array[filter_amino_acids(pdb_atom_array)]),
         residue_iter(protein.atoms),
     ):
         expected_atom_names = np.array(
-            protein_constants.residue_atoms_ordered[raw_residue.res_name[0]]
+            protein_constants.residue_atoms[raw_residue.res_name[0]]
         )
         if len(raw_residue) != len(expected_atom_names):
             missing_atoms = np.setdiff1d(expected_atom_names, raw_residue.atom_name)

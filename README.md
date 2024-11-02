@@ -12,9 +12,9 @@ We aim to do these three things and *no more*, leaving you to get on with the sc
 
 ## Efficient conversion between storage and usage formats
 
-The best format for storing data is typically not the most convenient format for data to be loaded into for downstream applications. The Datasets library abstracts the details of these choices and the logic for converting between formats into Feature classes, dictating how data of particular types should be stored and loaded. We extend the Datasets library by creating Feature types for optimised storage and loading of biological data, starting with proteins.
+The best format for storing data is typically not the most convenient format for data to be loaded into for downstream applications. The Datasets library abstracts the details of these choices and the logic for converting between formats into Feature classes, dictating how data of particular types should be stored and loaded. We extend the Datasets library by creating Feature types for optimised storage and loading of biological data, starting with biomolecular structures.
 
-The main formats we support for storing and loading protein data are:
+The main formats we support for storing and loading biomolecular structure data are:
 
 
 | Feature name |   Storage format    |  Loaded as  |
@@ -53,7 +53,7 @@ ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure
 print(type(ex["structure"]))
 ```
 ```
-<class 'bio_datasets.protein.ProteinChain'>
+<class 'bio_datasets.structure.protein.protein.ProteinChain'>
 ```
 
 That's it: when you access data from a dataset with preset Bio Datasets feature types, the datapoints that it returns will be Python dictionaries containing your Protein data formatted as a `bio_datasets.protein.ProteinChain` object (basically a biotite AtomArray with some added convenience methods for Protein ML.)
@@ -65,7 +65,8 @@ print(dataset.info.features)
 
 ```
 ```
-{'name': Value(dtype='string', id=None), 'structure': ProteinStructureFeature(with_box=False, with_bonds=False, with_occupancy=False, with_b_factor=False, with_res_id=False, with_atom_id=False, with_charge=False, with_element=False, with_ins_code=False, with_hetero=False, requires_encoding=True, requires_decoding=True, decode=True, id=None, encode_with_foldcomp=False)}
+{'name': Value(dtype='string', id=None),
+ 'structure': ProteinStructureFeature(requires_encoding=True, requires_decoding=True, decode=True, id=None, with_occupancy=False, with_b_factor=True, with_atom_id=False, with_charge=False, encode_with_foldcomp=False)}
 ```
 
 To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when bio_datasets is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format) fields when not.
@@ -181,7 +182,7 @@ TODO: add docs.
 
 ## Roadmap
 
-* Support for other biological data types: protein-ligand complexes, DNA, single cell / omics, MD, ...
+* Support for other biological data types: protein-ligand complexes, MD, single cell / omics, ...
 
 
 ## Contributions
