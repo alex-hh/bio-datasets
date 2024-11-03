@@ -25,7 +25,7 @@ from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
-from datasets.features.features import get_nested_type
+from datasets.features.features import Value, get_nested_type
 from datasets.table import array_cast, cast_array_to_feature
 from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
@@ -478,6 +478,9 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
     def __call__(self):
         return get_nested_type(self._features)
 
+    def fallback_feature(self):
+        return self._features
+
     @property
     def required_keys(self):
         required_keys = ["coords", "atom_name", "res_name", "chain_id"]
@@ -741,6 +744,13 @@ class StructureFeature(_AtomArrayFeatureMixin, CustomFeature):
 
     def __call__(self):
         return self.pa_type
+
+    def fallback_feature(self):
+        return {
+            "bytes": Value("binary"),
+            "path": Value("string"),
+            "type": Value("string"),
+        }
 
     def encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
         """Encode example into a format for Arrow.

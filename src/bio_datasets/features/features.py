@@ -4,7 +4,7 @@ Custom features for bio datasets.
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
 import copy
-from dataclasses import asdict
+from dataclasses import _asdict_inner
 from typing import ClassVar, Dict, Optional, Union
 
 from datasets import Features, LargeList, Sequence, Value
@@ -46,6 +46,12 @@ class CustomFeature:
     def _decode_example(self, example):
         raise NotImplementedError(
             "Should be implemented by child class if `requires_decoding` is True"
+        )
+
+    def fallback_feature(self):
+        # TODO: automatically infer fallback feature?
+        raise NotImplementedError(
+            "Should be implemented by child class if `fallback_feature` is True"
         )
 
 
@@ -114,9 +120,22 @@ def is_bio_feature(class_name: str) -> bool:
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
 class Features(Features, dict):
 
+    """We have things like
+
+    {'name': feature_name, 'feature_type_name': feature_type_dict}
+    feature_type_name can be e.g. 'class_label' or 'sequence' or 'struct'
+    when we load from yaml, we need to convert this somehow
+    _type = next(iter(obj))
+    if _type == "struct":
+        return from_yaml_inner(obj["struct"])
+    if _type == "sequence":
+        _feature = unsimplify(obj).pop(_type)
+    obj['struct']
+    """
+
     # TODO: do we need to modify from_arrow_schema / arrow_schema ?
     def __init__(*args, **kwargs):
-        # we need to be careful to avoid infinite recursion
+        # init method overridden to avoid infinite recursion
         # self not in the signature to allow passing self as a kwarg
         if not args:
             raise TypeError(
@@ -127,213 +146,6 @@ class Features(Features, dict):
         self._column_requires_decoding: Dict[str, bool] = {
             col: require_decoding(feature) for col, feature in self.items()
         }
-
-    def feature_is_bio(self, feature_name: str) -> bool:
-        return is_bio_feature(self[feature_name].__class__.__name__)
-
-    def _to_yaml_list(self) -> list:
-        # we compute the YAML list from the dict representation that is used for JSON dump
-        yaml_data = self.to_dict()
-
-        def simplify(feature: dict, type_prefix: str = "") -> dict:
-            if not isinstance(feature, dict):
-                raise TypeError(f"Expected a dict but got a {type(feature)}: {feature}")
-
-            for list_type in ["large_list", "list", "sequence"]:
-                # These might be difficult to handle with bio datasets
-                # I guess we do bio_list, bio_sequence, bio_large_list
-                # or we don't simplify, which also seems to be supported.
-                #
-                # list_type:                ->              list_type: int32
-                #   dtype: int32            ->
-                #
-                if isinstance(feature.get(list_type), dict) and list(
-                    feature[list_type]
-                ) == ["dtype"]:
-                    feature[type_prefix + list_type] = feature.pop(list_type)["dtype"]
-
-                #
-                # list_type:                ->              list_type:
-                #   struct:                 ->              - name: foo
-                #   - name: foo             ->                dtype: int32
-                #     dtype: int32          ->
-                #
-                if isinstance(feature.get(list_type), dict) and list(
-                    feature[list_type]
-                ) == ["struct"]:
-                    feature[type_prefix + list_type] = feature.pop(list_type)["struct"]
-
-            #
-            # class_label:              ->              class_label:
-            #   names:                  ->                names:
-            #   - negative              ->                  '0': negative
-            #   - positive              ->                  '1': positive
-            #
-            if isinstance(feature.get("class_label"), dict) and isinstance(
-                feature["class_label"].get("names"), list
-            ):
-                # server-side requirement: keys must be strings
-                feature["class_label"]["names"] = {
-                    str(label_id): label_name
-                    for label_id, label_name in enumerate(
-                        feature["class_label"]["names"]
-                    )
-                }
-            return feature
-
-        def to_yaml_inner(obj: Union[dict, list]) -> dict:
-            if isinstance(obj, dict):
-                _type = obj.pop("_type", None)
-                if _type == "LargeList":
-                    _feature = obj.pop("feature")
-                    return simplify({"large_list": to_yaml_inner(_feature), **obj})
-                elif _type == "Sequence":
-                    _feature = obj.pop("feature")
-                    return simplify({"sequence": to_yaml_inner(_feature), **obj})
-                elif _type == "Value":
-                    return obj
-                elif _type and not obj:
-                    # base type
-                    return {f"dtype": camelcase_to_snakecase(_type)}
-                elif _type:
-                    # nested type -- TODO: get example
-                    raise NotImplementedError(f"Support for {_type} is not implemented")
-                    return {
-                        f"{ret_prefix}dtype": simplify(
-                            {camelcase_to_snakecase(_type): obj}
-                        )
-                    }
-                else:
-
-                    def get_feature_dict(feature_name: str, feature_dict: dict):
-                        if self.feature_is_bio(feature_name):
-                            d = {
-                                "name": feature_name,
-                                "bio": to_yaml_inner(feature_dict, type_prefix="_bio")
-                                ** to_yaml_inner(
-                                    asdict(self[feature_name].fallback_feature())
-                                ),
-                            }
-                        else:
-                            d = {"name": feature_name, **to_yaml_inner(feature_dict)}
-                        return d
-
-                    return {
-                        "struct": [
-                            get_feature_dict(name, _feature)
-                            for name, _feature in obj.items()
-                        ]
-                    }
-            elif isinstance(obj, list):
-                return simplify({"list": simplify(to_yaml_inner(obj[0]))})
-            elif isinstance(obj, tuple):
-                return to_yaml_inner(list(obj))
-            else:
-                raise TypeError(f"Expected a dict or a list but got {type(obj)}: {obj}")
-
-        def to_yaml_types(obj: dict) -> dict:
-            if isinstance(obj, dict):
-                return {k: to_yaml_types(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [to_yaml_types(v) for v in obj]
-            elif isinstance(obj, tuple):
-                return to_yaml_types(list(obj))
-            else:
-                return obj
-
-        return to_yaml_types(to_yaml_inner(yaml_data)["struct"])
-
-    @classmethod
-    def _from_yaml_list(cls, yaml_data: list) -> "Features":
-        yaml_data = copy.deepcopy(yaml_data)
-
-        # we convert the list obtained from YAML data into the dict representation that is used for JSON dump
-
-        def unsimplify(feature: dict) -> dict:
-            if not isinstance(feature, dict):
-                raise TypeError(f"Expected a dict but got a {type(feature)}: {feature}")
-
-            for list_type in ["large_list", "list", "sequence"]:
-                #
-                # list_type: int32          ->              list_type:
-                #                           ->                dtype: int32
-                #
-                if isinstance(feature.get(list_type), str):
-                    feature[list_type] = {"dtype": feature[list_type]}
-
-            #
-            # class_label:              ->              class_label:
-            #   names:                  ->                names:
-            #     '0': negative              ->               - negative
-            #     '1': positive              ->               - positive
-            #
-            if isinstance(feature.get("class_label"), dict) and isinstance(
-                feature["class_label"].get("names"), dict
-            ):
-                label_ids = sorted(feature["class_label"]["names"], key=int)
-                if label_ids and [int(label_id) for label_id in label_ids] != list(
-                    range(int(label_ids[-1]) + 1)
-                ):
-                    raise ValueError(
-                        f"ClassLabel expected a value for all label ids [0:{int(label_ids[-1]) + 1}] but some ids are missing."
-                    )
-                feature["class_label"]["names"] = [
-                    feature["class_label"]["names"][label_id] for label_id in label_ids
-                ]
-            return feature
-
-        def from_yaml_inner(obj: Union[dict, list]) -> Union[dict, list]:
-            if isinstance(obj, dict):
-                if not obj:
-                    return {}
-                _type = next(iter(obj))
-                if _type == "large_list":
-                    _feature = unsimplify(obj).pop(_type)
-                    return {
-                        "feature": from_yaml_inner(_feature),
-                        **obj,
-                        "_type": "LargeList",
-                    }
-                if _type == "sequence":
-                    _feature = unsimplify(obj).pop(_type)
-                    return {
-                        "feature": from_yaml_inner(_feature),
-                        **obj,
-                        "_type": "Sequence",
-                    }
-                if _type == "list":
-                    return [from_yaml_inner(unsimplify(obj)[_type])]
-                if _type == "struct":
-                    return from_yaml_inner(obj["struct"])
-                elif _type == "dtype":
-                    # we can just add bio_dtype as well
-                    if isinstance(obj["dtype"], str):
-                        # e.g. int32, float64, string, audio, image
-                        try:
-                            Value(obj["dtype"])
-                            return {**obj, "_type": "Value"}
-                        except ValueError:
-                            # e.g. Audio, Image, ArrayXD
-                            return {"_type": snakecase_to_camelcase(obj["dtype"])}
-                    else:
-                        return from_yaml_inner(obj["dtype"])
-                else:
-                    return {
-                        "_type": snakecase_to_camelcase(_type),
-                        **unsimplify(obj)[_type],
-                    }
-            elif isinstance(obj, list):
-                names = [_feature.pop("name") for _feature in obj]
-                return {
-                    name: from_yaml_inner(
-                        _feature["bio"] if "bio" in _feature else _feature
-                    )
-                    for name, _feature in zip(names, obj)
-                }
-            else:
-                raise TypeError(f"Expected a dict or a list but got {type(obj)}: {obj}")
-
-        return cls.from_dict(from_yaml_inner(yaml_data))
 
     def encode_example(self, example):
         """
@@ -474,3 +286,13 @@ class Features(Features, dict):
                 else column
             )
         return decoded_batch
+
+    def to_fallback(self):
+        return Features(
+            **{
+                col: feature.fallback_feature()
+                if isinstance(feature, CustomFeature)
+                else feature
+                for col, feature in self.items()
+            }
+        )
