@@ -1,11 +1,6 @@
-"""Biotite atom array feature type for compatibility with HF datasets.
+"""Macromolecular structure feature types for compatibility with HF datasets.
 
-We write an Arrow ExtensionType for the AtomArray.
-A couple of options for this:
-1. Atom14
-2. Backbone
-3. Atom37
-The issue with other formats is that the list of constituents could vary.
+Features are decoded into biotite atom arrays.
 """
 import gzip
 import os
@@ -20,6 +15,7 @@ import numpy as np
 import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure import get_chains
+from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
@@ -31,17 +27,18 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.protein import constants as protein_constants
-from bio_datasets.protein.protein import (
-    BACKBONE_ATOMS,
-    Protein,
+from bio_datasets.structure import (
+    Biomolecule,
     ProteinChain,
     ProteinComplex,
-    create_complete_atom_array_from_aa_index,
-    filter_backbone,
-    filter_standard_amino_acids,
-    get_residue_starts_mask,
+    ProteinMixin,
 )
+from bio_datasets.structure.biomolecule import (
+    create_complete_atom_array_from_restype_index,
+)
+from bio_datasets.structure.protein import ProteinDictionary
+from bio_datasets.structure.protein import constants as protein_constants
+from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts_mask
 
 if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
@@ -173,7 +170,7 @@ def atom_array_from_dict(d: dict) -> bs.AtomArray:
             if aa == "O":
                 aa = "K"
             res_name = protein_constants.restype_1to3[aa]
-            for atom_name in BACKBONE_ATOMS:
+            for atom_name in protein_constants.BACKBONE_ATOMS:
                 annots = {}
                 for k in annots_keys:
                     annots[k] = d[k][res_ix]
@@ -311,36 +308,10 @@ def load_structure_from_file_dict(
 
 
 # n.b. metadata like chain_id, pdb_id, etc. should be stored separately
-@dataclass
-class _AtomArrayFeatureMixin:
-    with_box: bool = False
-    with_bonds: bool = False
-    with_occupancy: bool = False
-    with_b_factor: bool = False
-    with_res_id: bool = False  # can be inferred...
-    with_atom_id: bool = False
-    with_charge: bool = False
-    with_element: bool = False
-    with_ins_code: bool = False
-    with_hetero: bool = False
-
-    @property
-    def extra_fields(self):
-        # values that can be passed to biotite load_structure
-        extra_fields = []
-        if self.with_occupancy:
-            extra_fields.append("occupancy")
-        if self.with_b_factor:
-            extra_fields.append("b_factor")
-        if self.with_atom_id:
-            extra_fields.append("atom_id")
-        if self.with_charge:
-            extra_fields.append("charge")
-        return extra_fields
 
 
 @dataclass
-class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
+class AtomArrayFeature(CustomFeature):
     """
     AtomArray [`Feature`] to read macromolecular atomic structure data from a PDB or CIF file.
 
@@ -419,12 +390,13 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
     bonds.
     """
 
-    all_atoms_present: ClassVar[
-        bool
-    ] = False  # to use this, need to be decoding to Protein (ProteinAtomArrayFeature)
+    residue_dictionary: Optional[Union[ResidueDictionary, Dict]] = None
     drop_sidechains: ClassVar[bool] = False
     requires_encoding: bool = True
     requires_decoding: bool = True
+    all_atoms_present: bool = (
+        False  # when all atoms are present, we dont need to store atom name
+    )
     decode: bool = True
     coords_dtype: str = "float32"
     b_factor_is_plddt: bool = False
@@ -432,6 +404,16 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
     chain_id: Optional[
         str
     ] = None  # single chain id - means we will intepret structure as a single chain
+    with_box: bool = False
+    with_bonds: bool = False
+    with_occupancy: bool = False
+    with_b_factor: bool = False
+    with_res_id: bool = False  # can be inferred...
+    with_atom_id: bool = False
+    with_charge: bool = False
+    with_element: bool = False
+    with_ins_code: bool = False
+    with_hetero: bool = False
     id: Optional[str] = None
     # Automatically constructed
     _type: str = field(
@@ -439,9 +421,14 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
     )  # registered feature name
 
     def _make_features_dict(self):
+        # TODO: maybe just don't ever store restype_index?
+        if self.residue_dictionary is not None:
+            residue_identifier = ("restype_index", Array1D((None,), "uint8"))
+        else:
+            residue_identifier = ("res_name", Array1D((None,), "string"))
         features = [
             ("coords", Array2D((None, 3), self.coords_dtype)),
-            ("aa_index", Array1D((None,), "uint8")),
+            residue_identifier,
             ("chain_id", Array1D((None,), "string")),
         ]
         if not self.all_atoms_present:
@@ -473,6 +460,11 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
 
     def __post_init__(self):
         # init the StructFeature - since it inherits from dict, pa type inference is automatic (via get_nested_type)
+        if self.all_atoms_present:
+            assert (
+                self.residue_dictionary is not None
+            ), "residue_dictionary is required when all_atoms_present is True"
+        self.deserialize()
         self._features = self._make_features_dict()
 
     def __call__(self):
@@ -480,6 +472,10 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
 
     def fallback_feature(self):
         return self._features
+
+    def deserialize(self):
+        if isinstance(self.residue_dictionary, dict):
+            self.residue_dictionary = ResidueDictionary(**self.residue_dictionary)
 
     @property
     def required_keys(self):
@@ -490,23 +486,51 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
             required_keys.append("bonds")
         return required_keys
 
+    @property
+    def extra_fields(self):
+        # values that can be passed to biotite load_structure
+        extra_fields = []
+        if self.with_occupancy:
+            extra_fields.append("occupancy")
+        if self.with_b_factor:
+            extra_fields.append("b_factor")
+        if self.with_atom_id:
+            extra_fields.append("atom_id")
+        if self.with_charge:
+            extra_fields.append("charge")
+        return extra_fields
+
     def cast_storage(self, array: pa.StructArray) -> pa.StructArray:
-        array_fields = {field.name for field in array.type}
-        # c.f. cast_array_to_feature: since we don't inherit from dict, we reproduce the logic here
-        null_array = pa.array([None] * len(array))
-        arrays = [
-            cast_array_to_feature(
-                array.field(name) if name in array_fields else null_array, subfeature
-            )
-            for name, subfeature in self._features.items()
-        ]
+        null_mask = array.is_null()
+        if null_mask.sum() == len(null_mask):
+            null_array = pa.array([None] * len(array))
+            arrays = [
+                cast_array_to_feature(null_array, subfeature)
+                for _, subfeature in self._features.items()
+            ]
+        else:
+            array_fields = {field.name for field in array.type}
+            # c.f. cast_array_to_feature: since we don't inherit from dict, we reproduce the logic here
+            arrays = [
+                cast_array_to_feature(
+                    array.field(name) if name in array_fields else null_array,
+                    subfeature,
+                )
+                for name, subfeature in self._features.items()
+            ]
         return pa.StructArray.from_arrays(
-            arrays, names=list(self._features), mask=array.is_null()
+            arrays, names=list(self._features), mask=null_mask
         )
 
-    def encode_example(self, value: Union[bs.AtomArray, dict]) -> dict:
-        if isinstance(value, Protein):
-            value = value.atoms
+    def encode_example(
+        self,
+        value: Union[bs.AtomArray, Dict, Biomolecule],
+        is_standardised: bool = False,
+    ) -> dict:
+        if isinstance(value, Biomolecule):
+            return self.encode_example(
+                value.atoms, is_standardised=value.is_standardised
+            )
         if isinstance(value, dict):
             if "bytes" in value or "path" in value or "type" in value:
                 # if it's already encoded, we don't need to encode it again
@@ -516,43 +540,31 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
                 return self.encode_example(struct)
             if all([attr in value for attr in self.required_keys]):
                 return value
-            if "sequence" in value:
-                value = atom_array_from_dict(value)
             else:
-                raise ValueError(
-                    "Cannot encode dict without sequence or (bytes/path/type)"
-                )
-            return self.encode_example(value)
+                raise ValueError(f"Expected keys bytes/path/type in dict")
         elif isinstance(value, bs.AtomArray):
-            if self.all_atoms_present:
-                orig_length = len(value)
-                value, residue_starts = Protein.standardise_atoms(
-                    value, backbone_only=self.drop_sidechains
-                )
-                if len(value) != orig_length:
-                    raise ValueError(
-                        "Standardisation changed the length of the atom array"
-                    )
-            else:
-                residue_starts = get_residue_starts(value)
+            if self.all_atoms_present and not is_standardised:
+                assert self.residue_dictionary is not None
+                value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
+            residue_starts = get_residue_starts(value)
             # if len(value) > 65535:
             #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
             if len(residue_starts) > 65535:
-                # print(len(residue_starts))
                 raise ValueError(
                     "AtomArray too large to fit in uint16 (residue starts)"
                 )
             atom_array_struct = {
                 "coords": value.coord,
-                "aa_index": np.array(
-                    [
-                        protein_constants.restype_order_with_x[
-                            protein_constants.restype_3to1[res_name]
-                        ]
-                        for res_name in value.res_name[residue_starts]
-                    ]
-                ),
             }
+            if self.residue_dictionary is not None:
+                # it's useful to store numeric index for vectorised decoding, complete atom array creation, etc
+                atom_array_struct[
+                    "restype_index"
+                ] = self.residue_dictionary.resname_to_index(
+                    value.res_name[residue_starts]
+                )
+            else:
+                atom_array_struct["res_name"] = value.res_name[residue_starts]
             if not self.all_atoms_present:
                 atom_array_struct["residue_starts"] = residue_starts
                 atom_array_struct["atom_name"] = value.atom_name
@@ -650,14 +662,17 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
         # TODO: optimise this...if we set format to numpy, everything is a numpy array which should be ideal
         num_atoms = len(value["coords"])
         if self.all_atoms_present:
-            aa_index = value.pop("aa_index")
+            restype_index = value.pop("restype_index")
             if self.chain_id is None:
                 chain_id = value.pop("chain_id")  # residue-level annotation
             else:
-                chain_id = np.full(len(aa_index), self.chain_id)
+                chain_id = np.full(len(restype_index), self.chain_id)
                 del value["chain_id"]
-            atoms, residue_starts, _ = create_complete_atom_array_from_aa_index(
-                aa_index, chain_id, backbone_only=self.drop_sidechains
+            atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
+                restype_index,
+                residue_dictionary=self.residue_dictionary,
+                chain_id=chain_id,
+                backbone_only=self.drop_sidechains,
             )
             residue_index = (
                 np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
@@ -673,14 +688,22 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
                 atoms.set_annotation("res_id", value.pop("res_id")[residue_index])
             else:
                 atoms.set_annotation("res_id", residue_index + 1)  # 1-based residue ids
-            atoms.set_annotation("aa_index", value.pop("aa_index")[residue_index])
+            if self.residue_dictionary is not None:
+                atoms.set_annotation(
+                    "restype_index", value.pop("restype_index")[residue_index]
+                )
+                atoms.set_annotation(
+                    "res_name",
+                    np.array(self.residue_dictionary.residue_names)[
+                        atoms.restype_index
+                    ],
+                )
+            else:
+                atoms.set_annotation("res_name", value.pop("res_name")[residue_index])
             if "chain_id" in value and self.chain_id is None:
                 atoms.set_annotation("chain_id", value.pop("chain_id")[residue_index])
             elif self.chain_id is not None:
                 atoms.set_annotation("chain_id", np.full(num_atoms, self.chain_id))
-            atoms.set_annotation(
-                "res_name", np.array(protein_constants.resnames)[atoms.aa_index]
-            )
 
         if self.b_factor_is_plddt and "b_factor" in value:
             atoms.set_annotation("b_factor", value.pop("b_factor")[residue_index])
@@ -703,7 +726,7 @@ class AtomArrayFeature(_AtomArrayFeatureMixin, CustomFeature):
 
 
 @dataclass
-class StructureFeature(_AtomArrayFeatureMixin, CustomFeature):
+class StructureFeature(CustomFeature):
     """Structure [`Feature`] to read (bio)molecular atomic structure data from supported file types.
     The file contents are serialized as bytes, file path and file type within an Arrow table.
     The file contents are automatically decoded to a biotite AtomArray (if mode=="array") or a
@@ -736,6 +759,10 @@ class StructureFeature(_AtomArrayFeatureMixin, CustomFeature):
     requires_decoding: bool = True
     decode: bool = True
     id: Optional[str] = None
+    with_occupancy: bool = False
+    with_b_factor: bool = False
+    with_atom_id: bool = False
+    with_charge: bool = False
     encode_with_foldcomp: bool = False
     pa_type: ClassVar[Any] = pa.struct(
         {"bytes": pa.binary(), "path": pa.string(), "type": pa.string()}
@@ -751,6 +778,20 @@ class StructureFeature(_AtomArrayFeatureMixin, CustomFeature):
             "path": Value("string"),
             "type": Value("string"),
         }
+
+    @property
+    def extra_fields(self):
+        # values that can be passed to biotite load_structure
+        extra_fields = []
+        if self.with_occupancy:
+            extra_fields.append("occupancy")
+        if self.with_b_factor:
+            extra_fields.append("b_factor")
+        if self.with_atom_id:
+            extra_fields.append("atom_id")
+        if self.with_charge:
+            extra_fields.append("charge")
+        return extra_fields
 
     def encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
         """Encode example into a format for Arrow.
@@ -884,9 +925,9 @@ class StructureFeature(_AtomArrayFeatureMixin, CustomFeature):
 class ProteinStructureFeature(StructureFeature):
     _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
 
-    def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
+    def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
-            value = value[filter_standard_amino_acids(value)]
+            value = value[filter_amino_acids(value)]
             if "element" not in value._annot:
                 value.set_annotation(
                     "element", np.char.array(value.atom_name).astype("U1")
@@ -900,9 +941,7 @@ class ProteinStructureFeature(StructureFeature):
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
-        # TODO: check this always excludes hetatms
         # TODO: filter amino acids in encode_example also where possible
-        atoms = atoms[filter_standard_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             return ProteinComplex.from_atoms(atoms)
@@ -914,8 +953,12 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
 
     """Decodes to a `bio_datasets.protein.Protein` or `bio_datasets.protein.ProteinComplex` object.
 
+    Assumes standard set of amino acids for now.
+
     These objects have standardised atoms (with nans for any missing atoms),
     and are guaranteed to contain no HETATMs or hydrogens.
+
+    For generic storage of atom arrays without standardisation, see AtomArrayFeature
     """
 
     all_atoms_present: bool = False
@@ -925,10 +968,20 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         default="ProteinAtomArrayFeature", init=False, repr=False
     )  # registered feature name
 
+    def deserialize(self):
+        if isinstance(self.residue_dictionary, dict):
+            self.residue_dictionary = ProteinDictionary(**self.residue_dictionary)
+        elif self.all_atoms_present:
+            assert isinstance(
+                self.residue_dictionary, ProteinDictionary
+            ), "residue_dictionary must be a ProteinDictionary"
+
     @classmethod
     def from_preset(cls, preset: str, **kwargs):
         if preset == "afdb":
+            residue_dictionary = ProteinDictionary()
             return cls(
+                residue_dictionary=residue_dictionary,
                 with_b_factor=True,
                 b_factor_is_plddt=True,
                 # b_factor_dtype="uint8"
@@ -939,26 +992,46 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 **kwargs,
             )
         elif preset == "pdb":
-            return cls(with_b_factor=False, coords_dtype="float16", **kwargs)
+            residue_dictionary = ProteinDictionary()
+            return cls(
+                residue_dictionary=residue_dictionary,
+                with_b_factor=False,
+                coords_dtype="float16",
+                **kwargs,
+            )
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
-    def encode_example(self, value: Union[Protein, dict, bs.AtomArray]) -> dict:
+    def encode_example(
+        self,
+        value: Union[ProteinMixin, dict, bs.AtomArray],
+        is_standardised: bool = False,
+    ) -> dict:
         # TODO: share this code
-        if isinstance(value, bs.AtomArray):
+        if isinstance(value, dict) and "sequence" in value:
+            value = atom_array_from_dict(value)
+            return self.encode_example(value)
+        if isinstance(value, ProteinMixin):
+            # TODO: switch to extracting backbone.
             if self.drop_sidechains:
-                value = value[filter_backbone(value)]
+                value = value.backbone()
+            return super().encode_example(
+                value.atoms, is_standardised=value.is_standardised
+            )
+        if isinstance(value, bs.AtomArray):
             if "element" not in value._annot:
                 value.set_annotation(
                     "element", np.char.array(value.atom_name).astype("U1")
                 )
-            value = value[~np.isin(value.element, ["H", "D"])]
-            # TODO: check this always excludes hetatms
-            return super().encode_example(value[filter_standard_amino_acids(value)])
-        if isinstance(value, Protein):
+            if not is_standardised:
+                value = value[~np.isin(value.element, ["H", "D"])]
+                value = value[filter_amino_acids(value)]
             if self.drop_sidechains:
-                value = value.backbone()
-            return super().encode_example(value.atoms)
+                backbone_mask = np.isin(
+                    value.atom_name, self.residue_dictionary.backbone_atoms
+                )
+                value = value[backbone_mask]
+            return super().encode_example(value)
         return super().encode_example(value)
 
     def decode_example(
@@ -967,7 +1040,6 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
-        atoms = atoms[filter_standard_amino_acids(atoms)]
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             assert (

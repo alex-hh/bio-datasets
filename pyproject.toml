@@ -15,9 +15,10 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
+pytest = ">=8.2.0"
 biotite = ">=1.0.0"
 foldcomp = ">=0.0.7"
-datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes"}
+datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes-new"}
 nerfax = {git = "https://github.com/PeptoneLtd/nerfax.git"}
 
 [tool.poetry.source]

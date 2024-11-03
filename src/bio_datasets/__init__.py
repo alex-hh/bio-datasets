@@ -147,7 +147,7 @@ monkey_patch_features()
 from datasets.packaged_modules import _PACKAGED_DATASETS_MODULES, _hash_python_lines
 
 from .packaged_modules.structurefolder import structurefolder
-from .protein import Protein, ProteinChain, ProteinComplex
+from .structure import *
 
 _PACKAGED_BIO_MODULES = {
     "structurefolder": (

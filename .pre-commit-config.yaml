@@ -4,22 +4,24 @@ repos:
     hooks:
       - id: isort
         args: ["--profile", "black"]
+        types: [python]
         exclude: '^data'
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
     hooks:
       - id: black
+        types: [python]
         exclude: '^data|.*\.pdb$'
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
       - id: check-yaml
-        exclude: '^data|.*\.pdb$'
+        exclude: '^data|.*\.pdb$|^src/bio_datasets/structure/protein/library'
       - id: end-of-file-fixer
-        exclude: '^data|.*\.pdb$'
+        exclude: '^data|.*\.pdb$|^src/bio_datasets/structure/protein/library'
       - id: trailing-whitespace
-        exclude: '^data|.*\.pdb$'
+        exclude: '^data|.*\.pdb$|^src/bio_datasets/structure/protein/library'
         # exclude: '^data|^scripts/gvp'
   # - repo: https://github.com/PyCQA/flake8
   #   rev: 4.0.1

@@ -28,7 +28,8 @@ from datasets import Dataset, Features, NamedSplit, Sequence, Value
 from google.cloud.storage import Blob
 from pinder.core.utils import cloud as pinder_cloud_utils
 
-from bio_datasets.protein.protein import filter_standard_amino_acids
+from bio_datasets.structure.protein import ProteinDictionary, ProteinMixin
+from bio_datasets.structure.protein import constants as protein_constants
 
 UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
@@ -73,7 +74,6 @@ def process_many(
         )
 
 
-pinder_cloud_utils.process_many = process_many
 from pinder.core import PinderSystem, get_index, get_metadata
 from pinder.core.index.utils import IndexEntry
 from pinder.core.loader.structure import Structure
@@ -86,7 +86,7 @@ from pinder.core.structure.atoms import (
     mask_from_res_list,
 )
 
-from bio_datasets import Protein, ProteinAtomArrayFeature
+from bio_datasets import ProteinAtomArrayFeature
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -260,9 +260,9 @@ class PinderDataset:
         target_struct,
         mode: str = "ref",  # "ref" or "intersection"
     ):
-        """TODO: test that we get same result as applying get_seq_aligned_structure
+        """Align structures, either target to reference, or both to each other.
 
-        Source: https://github.com/pinder-org/pinder/blob/8ad1ead7a174736635c13fa7266d9ca54cf9f44e/src/pinder-core/pinder/core/loader/structure.py#L146
+        If using intersection, results should be the same as applying get_seq_aligned_structures.
         """
         # N.B. pinder utils have stuff for handling multi-chain cases, so we need to assert that these are single-chain structures.
         ref_chains = bs.get_chains(ref_struct.atom_array)
@@ -271,9 +271,10 @@ class PinderDataset:
         assert len(set(ref_chains)) == 1
 
         ref_at = ref_struct.atom_array.copy()
-        ref_at, _ = Protein.standardise_atoms(ref_at, drop_oxt=True)
+        residue_dict = ProteinDictionary(drop_oxt=True)
+        ref_at = ProteinMixin.standardise_atoms(ref_at, residue_dict)
         target_at = target_struct.atom_array.copy()
-        target_at, _ = Protein.standardise_atoms(target_at, drop_oxt=True)
+        target_at = ProteinMixin.standardise_atoms(target_at, residue_dict)
 
         if mode == "ref":
             # We drop any target residues that aren't present in the reference.
@@ -320,7 +321,7 @@ class PinderDataset:
     def _filter_non_standard(self, struct):
         struct = struct.filter("hetero", [False])
         at = struct.atom_array
-        at = at[filter_standard_amino_acids(at)]
+        at = at[np.isin(at.res_name, protein_constants.resnames)]
         struct.atom_array = at
         return struct
 
@@ -344,8 +345,9 @@ class PinderDataset:
             )
             return None
 
-        native_R_at, _ = Protein.standardise_atoms(native_R.atom_array, drop_oxt=True)
-        native_L_at, _ = Protein.standardise_atoms(native_L.atom_array, drop_oxt=True)
+        protein_dict = ProteinDictionary(drop_oxt=True)
+        native_R_at = ProteinMixin.standardise_atoms(native_R.atom_array, protein_dict)
+        native_L_at = ProteinMixin.standardise_atoms(native_L.atom_array, protein_dict)
         native_R.atom_array = native_R_at
         native_L.atom_array = native_L_at
 
@@ -401,8 +403,10 @@ class PinderDataset:
 
         holo_receptor_at = holo_receptor.atom_array.copy()
         holo_ligand_at = holo_ligand.atom_array.copy()
-        holo_receptor_at, _ = Protein.standardise_atoms(holo_receptor_at, drop_oxt=True)
-        holo_ligand_at, _ = Protein.standardise_atoms(holo_ligand_at, drop_oxt=True)
+        holo_receptor_at = ProteinMixin.standardise_atoms(
+            holo_receptor_at, protein_dict
+        )
+        holo_ligand_at = ProteinMixin.standardise_atoms(holo_ligand_at, protein_dict)
         holo_receptor = Structure(
             filepath=holo_receptor.filepath,
             uniprot_map=holo_receptor.uniprot_map,
@@ -589,6 +593,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_proc", type=int, default=None)
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
+    if args.num_proc is not None and args.num_proc > 1:
+        pinder_cloud_utils.process_many = process_many
 
     index = get_index()
     metadata = get_metadata()
@@ -616,6 +622,7 @@ if __name__ == "__main__":
             index = index.groupby("cluster_id").head(1)
 
     cluster_ids = list(index.cluster_id.unique())
+    protein_dict = ProteinDictionary()
     print(f"Pinder dataset: {len(cluster_ids)} clusters; {len(index)} systems")
 
     # TODO: decide on appropriate metadata (probably most of stuff from metadata...)
@@ -624,11 +631,22 @@ if __name__ == "__main__":
             "id": Value("string"),
             "cluster_id": Value("string"),
             "pdb_id": Value("string"),
-            "complex": ProteinAtomArrayFeature(with_res_id=True),
-            "apo_receptor": ProteinAtomArrayFeature(with_res_id=True),
-            "apo_ligand": ProteinAtomArrayFeature(with_res_id=True),
-            "pred_receptor": ProteinAtomArrayFeature(with_res_id=True),
-            "pred_ligand": ProteinAtomArrayFeature(with_res_id=True),
+            # store res id because we keep pinder numbering for uniprot mapping
+            "complex": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "apo_receptor": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "apo_ligand": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "pred_receptor": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
+            "pred_ligand": ProteinAtomArrayFeature(
+                residue_dictionary=protein_dict, with_res_id=True
+            ),
             "receptor_uniprot_accession": Value("string"),
             "ligand_uniprot_accession": Value("string"),
             "receptor_uniprot_seq": Value("string"),
