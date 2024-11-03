@@ -4,19 +4,18 @@ Custom features for bio datasets.
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
 import copy
-import json
 from dataclasses import asdict
 from typing import ClassVar, Dict, Optional, Union
 
-import pyarrow as pa
 from datasets import Features, LargeList, Sequence, Value
 from datasets.features.features import (
     FeatureType,
+    cast_to_python_objects,
     decode_nested_example,
     encode_nested_example,
-    generate_from_arrow_type,
 )
 from datasets.naming import camelcase_to_snakecase, snakecase_to_camelcase
+from datasets.utils.py_utils import zip_dict
 
 
 class CustomFeature:
@@ -93,11 +92,8 @@ def is_bio_feature(feature: FeatureType) -> bool:
         return False
 
 
-# worry is whether just modifying Features is robust enough to changes to the datasets library.
-# but assumption is that we basically just need;
+# assumption is that we basically just need;
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
-# issue here is that it might not be possible to inject two different fields into yaml_data["features"]
-# update_metadata_with_features).
 class Features(Features):
 
     # TODO: do we need to modify from_arrow_schema / arrow_schema ?
@@ -310,7 +306,141 @@ class Features(Features):
         return cls.from_dict(from_yaml_inner(yaml_data))
 
     def encode_example(self, example):
-        raise NotImplementedError("TODO.")
+        """
+        Encode example into a format for Arrow.
 
-    def decode_example(self, example):
-        raise NotImplementedError("TODO.")
+        Args:
+            example (`dict[str, Any]`):
+                Data in a Dataset row.
+
+        Returns:
+            `dict[str, Any]`
+        """
+        example = cast_to_python_objects(example)
+        return encode_nested_example(self, example)
+
+    def encode_column(self, column, column_name: str):
+        """
+        Encode column into a format for Arrow.
+
+        Args:
+            column (`list[Any]`):
+                Data in a Dataset column.
+            column_name (`str`):
+                Dataset column name.
+
+        Returns:
+            `list[Any]`
+        """
+        column = cast_to_python_objects(column)
+        return [
+            encode_nested_example(self[column_name], obj, level=1) for obj in column
+        ]
+
+    def encode_batch(self, batch):
+        """
+        Encode batch into a format for Arrow.
+
+        Args:
+            batch (`dict[str, list[Any]]`):
+                Data in a Dataset batch.
+
+        Returns:
+            `dict[str, list[Any]]`
+        """
+        encoded_batch = {}
+        if set(batch) != set(self):
+            raise ValueError(
+                f"Column mismatch between batch {set(batch)} and features {set(self)}"
+            )
+        for key, column in batch.items():
+            column = cast_to_python_objects(column)
+            encoded_batch[key] = [
+                encode_nested_example(self[key], obj, level=1) for obj in column
+            ]
+        return encoded_batch
+
+    def decode_example(
+        self,
+        example: dict,
+        token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None,
+    ):
+        """Decode example with custom feature decoding.
+
+        Args:
+            example (`dict[str, Any]`):
+                Dataset row data.
+            token_per_repo_id (`dict`, *optional*):
+                To access and decode audio or image files from private repositories on the Hub, you can pass
+                a dictionary `repo_id (str) -> token (bool or str)`.
+
+        Returns:
+            `dict[str, Any]`
+        """
+
+        return {
+            column_name: decode_nested_example(
+                feature, value, token_per_repo_id=token_per_repo_id
+            )
+            if self._column_requires_decoding[column_name]
+            else value
+            for column_name, (feature, value) in zip_dict(
+                {key: value for key, value in self.items() if key in example}, example
+            )
+        }
+
+    def decode_column(self, column: list, column_name: str):
+        """Decode column with custom feature decoding.
+
+        Args:
+            column (`list[Any]`):
+                Dataset column data.
+            column_name (`str`):
+                Dataset column name.
+
+        Returns:
+            `list[Any]`
+        """
+        return (
+            [
+                decode_nested_example(self[column_name], value)
+                if value is not None
+                else None
+                for value in column
+            ]
+            if self._column_requires_decoding[column_name]
+            else column
+        )
+
+    def decode_batch(
+        self,
+        batch: dict,
+        token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None,
+    ):
+        """Decode batch with custom feature decoding.
+
+        Args:
+            batch (`dict[str, list[Any]]`):
+                Dataset batch data.
+            token_per_repo_id (`dict`, *optional*):
+                To access and decode audio or image files from private repositories on the Hub, you can pass
+                a dictionary repo_id (str) -> token (bool or str)
+
+        Returns:
+            `dict[str, list[Any]]`
+        """
+        decoded_batch = {}
+        for column_name, column in batch.items():
+            decoded_batch[column_name] = (
+                [
+                    decode_nested_example(
+                        self[column_name], value, token_per_repo_id=token_per_repo_id
+                    )
+                    if value is not None
+                    else None
+                    for value in column
+                ]
+                if self._column_requires_decoding[column_name]
+                else column
+            )
+        return decoded_batch
