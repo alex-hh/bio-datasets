@@ -9,13 +9,14 @@ from .features import *
 
 def monkey_patch_features():
 
+    SPARK_AVAILABLE = importlib.util.find_spec("pyspark") is not None
+
     import datasets.io
     import datasets.io.abc
     import datasets.io.csv
     import datasets.io.generator
     import datasets.io.json
     import datasets.io.parquet
-    import datasets.io.spark
     import datasets.io.sql
     import datasets.io.text
     from datasets.splits import SplitDict
@@ -128,7 +129,6 @@ def monkey_patch_features():
     datasets.info.Features = Features
     datasets.io.abc.Features = Features
     datasets.io.csv.Features = Features
-    datasets.io.spark.Features = Features
     datasets.io.generator.Features = Features
     datasets.io.json.Features = Features
     datasets.io.parquet.Features = Features
@@ -139,6 +139,9 @@ def monkey_patch_features():
     datasets.load.Features = Features
     datasets.formatting.formatting.Features = Features
     # datasets.formatting.polars_formatter.Features = BioFeatures
+
+    if SPARK_AVAILABLE:
+        datasets.io.spark.Features = Features
 
 
 monkey_patch_features()
