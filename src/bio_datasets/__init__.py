@@ -67,15 +67,14 @@ def monkey_patch_features():
 
     def _to_yaml_dict(self) -> dict:
         yaml_dict = {}
+        fallback_features = self.features.to_fallback()
         dataset_info_dict = dataclasses.asdict(self)
         for key in dataset_info_dict:
             if key == "features":
                 yaml_dict["bio_features"] = dataset_info_dict[
                     "features"
                 ]._to_yaml_list()
-                yaml_dict["features"] = (
-                    dataset_info_dict["features"].to_fallback()._to_yaml_list()
-                )
+                yaml_dict["features"] = fallback_features._to_yaml_list()
             elif key in self._INCLUDED_INFO_IN_YAML:
                 value = getattr(self, key)
                 if hasattr(value, "_to_yaml_list"):  # Features, SplitDict
@@ -100,6 +99,24 @@ def monkey_patch_features():
 
     datasets.info.DatasetInfo._from_yaml_dict = _from_yaml_dict
     datasets.info.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.arrow_writer.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.arrow_writer.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.arrow_dataset.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.arrow_dataset.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.builder.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.builder.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.combine.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.combine.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.dataset_dict.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.dataset_dict.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.inspect.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.inspect.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.iterable_dataset.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.iterable_dataset.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.load.DatasetInfo._from_yaml_dict = _from_yaml_dict
+    datasets.load.DatasetInfo._to_yaml_dict = _to_yaml_dict
 
     datasets.Features = Features
     datasets.features.Features = Features
