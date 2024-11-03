@@ -8,8 +8,6 @@ __all__ = [
 
 from typing import Dict
 
-from datasets.features.features import FeatureType, register_feature
-
 from .atom_array import (
     AtomArrayFeature,
     ProteinAtomArrayFeature,

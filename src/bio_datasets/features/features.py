@@ -14,6 +14,7 @@ from datasets.features.features import (
     decode_nested_example,
     encode_nested_example,
     register_feature,
+    require_decoding,
 )
 from datasets.naming import camelcase_to_snakecase, snakecase_to_camelcase
 from datasets.utils.py_utils import zip_dict
@@ -48,7 +49,7 @@ class CustomFeature:
         )
 
 
-def encode_nested_example(schema, obj, is_nested: bool = False):
+def bio_encode_nested_example(schema, obj, is_nested: bool = False):
     """Encode a nested example.
     This is used since some features (in particular ClassLabel) have some logic during encoding.
 
@@ -61,7 +62,7 @@ def encode_nested_example(schema, obj, is_nested: bool = False):
         return encode_nested_example(schema, obj, is_nested)
 
 
-def decode_nested_example(
+def bio_decode_nested_example(
     schema, obj, token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None
 ):
     """Decode a nested example.
@@ -98,7 +99,9 @@ _BIO_FEATURE_TYPES: Dict[str, FeatureType] = {}
 
 
 def register_bio_feature(feature_cls):
-    assert issubclass(feature_cls, CustomFeature)
+    assert issubclass(
+        feature_cls, CustomFeature
+    ), f"Expected a subclass of CustomFeature but got {feature_cls}"
     _BIO_FEATURE_TYPES[feature_cls.__name__] = feature_cls
     register_feature(feature_cls, feature_cls.__name__)
 
@@ -109,9 +112,21 @@ def is_bio_feature(class_name: str) -> bool:
 
 # assumption is that we basically just need;
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
-class Features(Features):
+class Features(Features, dict):
 
     # TODO: do we need to modify from_arrow_schema / arrow_schema ?
+    def __init__(*args, **kwargs):
+        # we need to be careful to avoid infinite recursion
+        # self not in the signature to allow passing self as a kwarg
+        if not args:
+            raise TypeError(
+                "descriptor '__init__' of 'Features' object needs an argument"
+            )
+        self, *args = args
+        dict.__init__(self, *args, **kwargs)
+        self._column_requires_decoding: Dict[str, bool] = {
+            col: require_decoding(feature) for col, feature in self.items()
+        }
 
     def feature_is_bio(self, feature_name: str) -> bool:
         return is_bio_feature(self[feature_name].__class__.__name__)
@@ -332,7 +347,7 @@ class Features(Features):
             `dict[str, Any]`
         """
         example = cast_to_python_objects(example)
-        return encode_nested_example(self, example)
+        return bio_encode_nested_example(self, example)
 
     def encode_column(self, column, column_name: str):
         """
@@ -349,7 +364,7 @@ class Features(Features):
         """
         column = cast_to_python_objects(column)
         return [
-            encode_nested_example(self[column_name], obj, level=1) for obj in column
+            bio_encode_nested_example(self[column_name], obj, level=1) for obj in column
         ]
 
     def encode_batch(self, batch):
@@ -371,7 +386,7 @@ class Features(Features):
         for key, column in batch.items():
             column = cast_to_python_objects(column)
             encoded_batch[key] = [
-                encode_nested_example(self[key], obj, level=1) for obj in column
+                bio_encode_nested_example(self[key], obj, level=1) for obj in column
             ]
         return encoded_batch
 
@@ -394,7 +409,7 @@ class Features(Features):
         """
 
         return {
-            column_name: decode_nested_example(
+            column_name: bio_decode_nested_example(
                 feature, value, token_per_repo_id=token_per_repo_id
             )
             if self._column_requires_decoding[column_name]
@@ -418,7 +433,7 @@ class Features(Features):
         """
         return (
             [
-                decode_nested_example(self[column_name], value)
+                bio_decode_nested_example(self[column_name], value)
                 if value is not None
                 else None
                 for value in column
@@ -448,7 +463,7 @@ class Features(Features):
         for column_name, column in batch.items():
             decoded_batch[column_name] = (
                 [
-                    decode_nested_example(
+                    bio_decode_nested_example(
                         self[column_name], value, token_per_repo_id=token_per_repo_id
                     )
                     if value is not None

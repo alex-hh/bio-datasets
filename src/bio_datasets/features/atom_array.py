@@ -25,7 +25,7 @@ from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
-from datasets.features.features import Feature, get_nested_type
+from datasets.features.features import get_nested_type
 from datasets.table import array_cast, cast_array_to_feature
 from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict

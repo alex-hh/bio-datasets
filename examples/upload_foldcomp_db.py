@@ -33,9 +33,13 @@ import os
 from typing import Optional
 
 import foldcomp
-from datasets import Dataset, Features, NamedSplit, Value
+from datasets import Dataset, NamedSplit, Value
 
-from bio_datasets.features import ProteinAtomArrayFeature, ProteinStructureFeature
+from bio_datasets.features import (
+    Features,
+    ProteinAtomArrayFeature,
+    ProteinStructureFeature,
+)
 
 
 def examples_generator(db_file, max_examples: Optional[int] = None):

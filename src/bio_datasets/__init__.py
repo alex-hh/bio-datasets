@@ -17,3 +17,7 @@ _PACKAGED_BIO_MODULES = {
 }
 
 _PACKAGED_DATASETS_MODULES.update(_PACKAGED_BIO_MODULES)
+
+
+def load_dataset(*args, **kwargs):
+    return datasets.load_dataset(*args, **kwargs)
