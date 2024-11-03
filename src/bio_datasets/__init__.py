@@ -7,6 +7,8 @@ from .features import *
 from .packaged_modules.structurefolder import structurefolder
 from .protein import Protein, ProteinChain, ProteinComplex
 
+datasets.features.features.Features = Features
+
 _PACKAGED_BIO_MODULES = {
     "structurefolder": (
         structurefolder.__name__,

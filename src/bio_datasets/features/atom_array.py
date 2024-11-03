@@ -49,7 +49,7 @@ if bio_config.FOLDCOMP_AVAILABLE:
 if bio_config.FASTPDB_AVAILABLE:
     import fastpdb
 
-from .features import CustomFeature
+from .features import CustomFeature, register_bio_feature
 
 FILE_TYPE_TO_EXT = {
     "pdb": "pdb",
@@ -965,3 +965,9 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             ), "Cannot drop sidechains for multi-chain proteins."
             return ProteinComplex.from_atoms(atoms)
         return ProteinChain(atoms, backbone_only=self.drop_sidechains)
+
+
+register_bio_feature(StructureFeature)
+register_bio_feature(AtomArrayFeature)
+register_bio_feature(ProteinAtomArrayFeature)
+register_bio_feature(ProteinStructureFeature)

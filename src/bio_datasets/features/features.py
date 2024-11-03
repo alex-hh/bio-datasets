@@ -13,6 +13,7 @@ from datasets.features.features import (
     cast_to_python_objects,
     decode_nested_example,
     encode_nested_example,
+    register_feature,
 )
 from datasets.naming import camelcase_to_snakecase, snakecase_to_camelcase
 from datasets.utils.py_utils import zip_dict
@@ -77,7 +78,8 @@ def decode_nested_example(
         return decode_nested_example(schema, obj, token_per_repo_id)
 
 
-def is_bio_feature(feature: FeatureType) -> bool:
+def is_custom_feature(feature: FeatureType) -> bool:
+    # TODO: check feature is registered
     if isinstance(feature, CustomFeature):
         return True
     elif isinstance(feature, dict):
@@ -92,6 +94,19 @@ def is_bio_feature(feature: FeatureType) -> bool:
         return False
 
 
+_BIO_FEATURE_TYPES: Dict[str, FeatureType] = {}
+
+
+def register_bio_feature(feature_cls):
+    assert issubclass(feature_cls, CustomFeature)
+    _BIO_FEATURE_TYPES[feature_cls.__name__] = feature_cls
+    register_feature(feature_cls, feature_cls.__name__)
+
+
+def is_bio_feature(class_name: str) -> bool:
+    return class_name in _BIO_FEATURE_TYPES
+
+
 # assumption is that we basically just need;
 # yaml_data["features"] = Features._from_yaml_list(yaml_data["features"]) to work as expected
 class Features(Features):
@@ -99,7 +114,7 @@ class Features(Features):
     # TODO: do we need to modify from_arrow_schema / arrow_schema ?
 
     def feature_is_bio(self, feature_name: str) -> bool:
-        return is_bio_feature(self[feature_name])
+        return is_bio_feature(self[feature_name].__class__.__name__)
 
     def _to_yaml_list(self) -> list:
         # we compute the YAML list from the dict representation that is used for JSON dump
