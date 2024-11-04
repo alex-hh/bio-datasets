@@ -26,6 +26,11 @@ N.B. if we use an order-agnostic autoregressive model, then chain order doesn't 
 
 reusing data across splits:
 https://huggingface.co/docs/datasets/en/repository_structure
+
+Finally, a model trained without chemical element types as input features had much lower sequence
+recovery near metals (8% difference, Fig. S1D), but almost the same sequence recovery
+near small molecules and nucleic acids suggesting that the model can to some extent infer
+chemical element identity from bonded geometry.
 """
 import argparse
 from dataclasses import dataclass

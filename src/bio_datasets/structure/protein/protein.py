@@ -118,6 +118,10 @@ class ProteinDictionary(ResidueDictionary):
         atom_names[oxt_mask] = "OXT"
         return atom_names
 
+    def restype_1to3(self, restype: str) -> str:
+        assert len(restype) == 1, "restype must be a single character"
+        return protein_constants.restype_1to3[restype]
+
 
 def filter_backbone(array, residue_dictionary):
     """
