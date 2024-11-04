@@ -21,7 +21,7 @@ from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
-from datasets.features.features import CustomFeature, get_nested_type
+from datasets.features.features import Value, get_nested_type
 from datasets.table import array_cast, cast_array_to_feature
 from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
@@ -46,6 +46,7 @@ if bio_config.FOLDCOMP_AVAILABLE:
 if bio_config.FASTPDB_AVAILABLE:
     import fastpdb
 
+from .features import CustomFeature, register_bio_feature
 
 FILE_TYPE_TO_EXT = {
     "pdb": "pdb",
@@ -469,6 +470,9 @@ class AtomArrayFeature(CustomFeature):
     def __call__(self):
         return get_nested_type(self._features)
 
+    def fallback_feature(self):
+        return self._features
+
     def deserialize(self):
         if isinstance(self.residue_dictionary, dict):
             self.residue_dictionary = ResidueDictionary(**self.residue_dictionary)
@@ -768,6 +772,13 @@ class StructureFeature(CustomFeature):
     def __call__(self):
         return self.pa_type
 
+    def fallback_feature(self):
+        return {
+            "bytes": Value("binary"),
+            "path": Value("string"),
+            "type": Value("string"),
+        }
+
     @property
     def extra_fields(self):
         # values that can be passed to biotite load_structure
@@ -1036,3 +1047,9 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             ), "Cannot drop sidechains for multi-chain proteins."
             return ProteinComplex.from_atoms(atoms)
         return ProteinChain(atoms, backbone_only=self.drop_sidechains)
+
+
+register_bio_feature(StructureFeature)
+register_bio_feature(AtomArrayFeature)
+register_bio_feature(ProteinAtomArrayFeature)
+register_bio_feature(ProteinStructureFeature)

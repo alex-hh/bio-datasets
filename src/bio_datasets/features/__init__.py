@@ -3,9 +3,10 @@ __all__ = [
     "StructureFeature",
     "ProteinAtomArrayFeature",
     "ProteinStructureFeature",
+    "Features",
 ]
 
-from datasets.features.features import register_feature
+from typing import Dict
 
 from .atom_array import (
     AtomArrayFeature,
@@ -13,8 +14,4 @@ from .atom_array import (
     ProteinStructureFeature,
     StructureFeature,
 )
-
-register_feature(StructureFeature, "StructureFeature")
-register_feature(AtomArrayFeature, "AtomArrayFeature")
-register_feature(ProteinAtomArrayFeature, "ProteinAtomArrayFeature")
-register_feature(ProteinStructureFeature, "ProteinStructureFeature")
+from .features import CustomFeature, Features

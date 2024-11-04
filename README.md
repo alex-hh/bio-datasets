@@ -5,7 +5,7 @@ Bringing bio (molecules and more) to the HuggingFace Datasets library.
 This (unofficial!) extension to Datasets is designed to make the following things as easy as possible:
 
 1. efficient storage of biological data for ML
-2. low-overhead loading of data into python objects from standard bio data libraries, convenient for downstream processing
+2. low-overhead loading of data into standardised python objects from bio data libraries, convenient for downstream processing
 3. sharing of datasets large and small
 
 We aim to do these three things and *no more*, leaving you to get on with the science!
@@ -46,7 +46,7 @@ import bio_datasets  # necessary to register the custom feature types with the d
 from datasets import load_dataset
 
 dataset = load_dataset(
-    "graph-transformers/afdb_e_coli",
+    "biodatasets/afdb_e_coli",
     split="train",
 )
 ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure.AtomArray` wrapped in a `bio_datasets.Protein` object for standardisation.)
@@ -140,7 +140,7 @@ from datasets import Features, Value, load_dataset
 from bio_datasets import AtomArrayFeature
 
 dataset = load_dataset(
-    "graph-transformers/afdb_e_coli",
+    "biodatasets/afdb_e_coli",
     split="train",
 )
 pdb_time = timeit.timeit(stmt="""[ex for ex in dataset]""", number=1, globals=globals())
