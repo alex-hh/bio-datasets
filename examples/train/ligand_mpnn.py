@@ -27,14 +27,16 @@ N.B. if we use an order-agnostic autoregressive model, then chain order doesn't 
 reusing data across splits:
 https://huggingface.co/docs/datasets/en/repository_structure
 """
+import argparse
 from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from lightning.pytorch import LightningModule
+from lightning import pytorch as pl
 
+from bio_datasets import load_dataset
 from bio_datasets.structure.biomolecule import BiomoleculeComplex
 
 
@@ -54,8 +56,10 @@ class ProteinMPNNConfig:
     reference_distance_type: str = "ca"
 
 
-def proteinmpnn_transforms(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
-    # TODO: apply transforms.
+def proteinmpnn_transforms(
+    complex: BiomoleculeComplex, cfg: ProteinMPNNConfig, split_name: str = "train"
+):
+    # TODO: apply transforms; add split name to features dict.
     return complex
 
 
@@ -522,7 +526,7 @@ class ProteinMPNN(nn.Module):
         )
 
 
-class ProteinMPNNForInverseFolding(LightningModule):
+class ProteinMPNNForInverseFolding(pl.LightningModule):
     def __init__(self, cfg: ProteinMPNNConfig):
         super().__init__()
         self.model = ProteinMPNN(cfg.model)
@@ -545,3 +549,54 @@ class ProteinMPNNForInverseFolding(LightningModule):
         # TODO: add scaling factor (why is this important?)
         loss = F.cross_entropy(logits, targets, ignore_index=-100)
         return loss
+
+
+def main(args):
+    cfg = ProteinMPNNConfig()
+    train_dataset = load_dataset(
+        args.repo_id, name=args.config_name, split="train", streaming=True
+    )
+    val_dataset = load_dataset(args.repo_id, name=args.config_name, split="val")
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset.map(
+            proteinmpnn_transforms, fn_kwargs={"split_name": "train", "cfg": cfg}
+        ),
+        batch_size=16,
+    )
+    # TODO: add epoch end shuffling.
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset.map(
+            proteinmpnn_transforms, fn_kwargs={"split_name": "val", "cfg": cfg}
+        ),
+        batch_size=16,
+    )
+    test_loaders = [
+        torch.utils.data.DataLoader(
+            load_dataset(args.repo_id, name=args.config_name, split=split).map(
+                proteinmpnn_transforms, fn_kwargs={"split_name": split, "cfg": cfg}
+            ),
+            batch_size=16,
+        )
+        for split in args.test_split
+    ]
+
+    model = ProteinMPNNForInverseFolding(cfg)
+    trainer = pl.Trainer(
+        max_epochs=100, callbacks=[pl.callbacks.ModelCheckpoint(monitor="val_loss")]
+    )
+    trainer.fit(model, train_loader, val_loader)
+    trainer.test(model, test_loaders)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo_id", default="biodatasets/PDB")
+    parser.add_argument("--config_name", default="ligand_mpnn")
+    parser.add_argument(
+        "--test_split",
+        nargs="+",
+        default=["test_ligand", "test_nucleotide", "test_metal"],
+    )
+    args = parser.parse_args()
+    main(args)
