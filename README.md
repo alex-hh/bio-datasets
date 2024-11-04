@@ -46,7 +46,7 @@ import bio_datasets  # necessary to register the custom feature types with the d
 from datasets import load_dataset
 
 dataset = load_dataset(
-    "graph-transformers/afdb_e_coli",
+    "biodatasets/afdb_e_coli",
     split="train",
 )
 ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure.AtomArray` wrapped in a `bio_datasets.Protein` object for standardisation.)
@@ -140,7 +140,7 @@ from datasets import Features, Value, load_dataset
 from bio_datasets import AtomArrayFeature
 
 dataset = load_dataset(
-    "graph-transformers/afdb_e_coli",
+    "biodatasets/afdb_e_coli",
     split="train",
 )
 pdb_time = timeit.timeit(stmt="""[ex for ex in dataset]""", number=1, globals=globals())

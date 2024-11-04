@@ -24,10 +24,10 @@ import numpy as np
 import pandas as pd
 import tqdm
 from biotite import structure as bs
-from datasets import Dataset, Features, NamedSplit, Sequence, Value
 from google.cloud.storage import Blob
 from pinder.core.utils import cloud as pinder_cloud_utils
 
+from bio_datasets import Dataset, Features, NamedSplit, Sequence, Value
 from bio_datasets.structure.protein import ProteinDictionary, ProteinMixin
 from bio_datasets.structure.protein import constants as protein_constants
 
@@ -694,6 +694,6 @@ if __name__ == "__main__":
             num_proc=args.num_proc,
         )
         dataset.push_to_hub(
-            "graph-transformers/pinder",
+            "biodatasets/pinder",
             split=split,
         )
