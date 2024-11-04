@@ -8,6 +8,9 @@ We only upload the 'canonical' apo conformation for each protein.
 The sequences of the unbound states are not aligned to the bound state, so that each unbound state
 covers an identical set of residues to the bound state. Any missing coordinates in the unbound states
 are set to NaN.
+
+N.B. we recommend downloading the entire dataset first - using cloud downloads on an individual
+basis is slow and not robust.
 """
 import argparse
 import contextlib
@@ -557,8 +560,8 @@ def examples_generator(
                     ex = ds[i]
             except Exception as e:
                 print(f"Error getting example {index_df.iloc[i]['id']}", e)
-                # raise e
-                continue
+                raise e
+                # continue
             if ex is None:
                 print(f"Skipping None example {index_df.iloc[i]['id']}")
                 continue
@@ -591,9 +594,10 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_path", type=str, default=None)
     parser.add_argument("--max_examples", type=int, default=None)
     parser.add_argument("--num_proc", type=int, default=None)
+    parser.add_argument("--safe_download", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
-    if args.num_proc is not None and args.num_proc > 1:
+    if args.safe_download or (args.num_proc is not None and args.num_proc > 1):
         pinder_cloud_utils.process_many = process_many
 
     index = get_index()
