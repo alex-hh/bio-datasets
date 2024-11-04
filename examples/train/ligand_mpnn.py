@@ -36,6 +36,7 @@ import argparse
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,6 +44,40 @@ from lightning import pytorch as pl
 
 from bio_datasets import load_dataset
 from bio_datasets.structure.biomolecule import BiomoleculeComplex
+from bio_datasets.structure.protein import ProteinComplex, ProteinMixin
+
+
+def numpy_topk(
+    matrix: np.ndarray,
+    k: int,
+    axis: int = -1,
+    largest: bool = True,
+    sorted: bool = True,
+):
+    """
+    Perform a top-k operation on a matrix along a specified axis.
+
+    Args:
+        matrix (np.ndarray): The input matrix.
+        k (int): The number of largest elements to retrieve.
+        axis (int): The axis along which to perform the operation. Defaults to the last axis.
+        largest (bool): If True, find the k largest elements. If False, find the k smallest elements.
+        sorted (bool): If True, the returned values will be sorted, highest to lowest.
+    Returns:
+        indices (np.ndarray): Indices of the k largest or smallest elements.
+        values (np.ndarray): The k largest or smallest elements.
+    """
+    if largest:
+        indices = np.argsort(matrix, axis=axis)[..., -k:]
+        if sorted:
+            # sort high to low
+            indices = indices[..., ::-1]
+        values = np.take_along_axis(matrix, indices, axis=axis)
+    else:
+        indices = np.argsort(matrix, axis=axis)[..., :k]
+        # indices are already sorted low to high
+        values = np.take_along_axis(matrix, indices, axis=axis)
+    return values, indices
 
 
 @dataclass
@@ -61,16 +96,103 @@ class ProteinMPNNConfig:
     reference_distance_type: str = "ca"
 
 
-def proteinmpnn_transforms(
-    complex: BiomoleculeComplex, cfg: ProteinMPNNConfig, split_name: str = "train"
+def compute_distance_rbfs(
+    distance_matrix: np.ndarray,
+    num_rbf: int = 16,
+    D_min: float = 2.0,
+    D_max: float = 22.0,
 ):
+    """Distance type for new graph determines distance used for constructing new graph instance,
+    not for the computation of the RBFs, which are based on the current distance type.
+    RBFs are just soft bins.
+    """
+    assert (
+        distance_matrix.ndim == 3 or distance_matrix.ndim == 2
+    )  # [L_i, L_j, num_dists]
+    spaced_mus = np.linspace(D_min, D_max, num_rbf)
+    sigma = (D_max - D_min) / num_rbf
+    spaced_mus = spaced_mus[None, None, :]
+    dists = distance_matrix[..., None]
+    rbfs = np.exp(-(((dists - spaced_mus) / sigma) ** 2))
+    if distance_matrix.ndim == 3:
+        L, _, num_dists = distance_matrix.shape
+        rbfs = np.reshape(
+            rbfs, [L, L, num_dists * num_rbf]
+        )  # [L_i, L_j, num_dists, num_rbf] -> [L_i, L_j, num_dists * num_rbf]
+    return rbfs
+
+
+def make_protein_features(
+    complex: BiomoleculeComplex,
+    cfg: ProteinMPNNConfig,
+    noise_std: Optional[float] = None,
+):
+    protein_chain_ids = [
+        chain_id
+        for chain_id, chain in complex.chains
+        if isinstance(chain, ProteinMixin)
+    ]
+    protein_mask = np.isin(complex.atoms.chain_id, protein_chain_ids)
     # TODO: apply transforms; add split name to features dict.
-    return complex
+    protein_complex = ProteinComplex(
+        [complex.get_chain(chain_id) for chain_id in protein_chain_ids],
+    )
+    if noise_std is not None:
+        protein_complex.atoms.coords += np.random.normal(
+            scale=noise_std, size=protein_complex.atoms.coords.shape
+        )
+    # make sure that the atoms are in the same order - actually not important for mpnn
+    assert np.all(
+        complex.atoms.atom_name[protein_mask] == protein_complex.atoms.atom_name
+    )
+    any_residue_has_cb = np.any(protein_complex.atoms.atom_name == "CB")
+    protein_distances = protein_complex.distances(
+        atom_names=["N", "CA", "C", "O", "CB"]
+        if any_residue_has_cb
+        else ["N", "CA", "C", "O"],  # TODO: mpnn CB calc if backbone_only
+        multi_atom_calc_type="all",
+        nan_fill="max",
+    )
+    ca_distances = protein_complex.distances(atom_names="ca", nan_fill="max")
+    assert ca_distances.ndim == 2, "ca distances must be 2D"
+    protein_rbfs = compute_distance_rbfs(protein_distances, cfg.num_rbf)
+    _, topk_indices = numpy_topk(
+        ca_distances, k=cfg.num_neighbours, axis=-1, largest=False, sorted=True
+    )
+
+    return {
+        "rbfs": protein_rbfs[:, topk_indices],
+        "residue_separations": protein_complex.residue_separations()[:, topk_indices],
+        "is_same_chain": (
+            protein_complex.atoms.chain_id[:, None]
+            == protein_complex.atoms.chain_id[None, :]
+        )[:, topk_indices],
+        "aa_index": protein_complex.atoms.restype_index,
+    }
 
 
-def to_sparse_graph_features(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
-    # TODO: convert to sparse graph.
-    return node_features, edge_features, edge_index
+def make_ligand_features(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
+    # TODO: implement
+    return None
+
+
+def make_protein_ligand_features(
+    protein_complex: ProteinComplex,
+    ligand_complex: BiomoleculeComplex,
+    cfg: ProteinMPNNConfig,
+):
+    # thing about ligandmpnn is it's really a multigraph
+    # TODO: implement
+    return None
+
+
+def proteinmpnn_transforms(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
+    # this drops any ligand chains automatically
+    return make_protein_features(complex, cfg)
+
+
+def ligandmpnn_transforms(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
+    raise NotImplementedError()
 
 
 def pack_edges(
@@ -532,9 +654,12 @@ class ProteinMPNN(nn.Module):
 
 
 class ProteinMPNNForInverseFolding(pl.LightningModule):
-    def __init__(self, cfg: ProteinMPNNConfig):
+    def __init__(
+        self, cfg: ProteinMPNNConfig, test_dataset_names: Optional[List[str]] = None
+    ):
         super().__init__()
         self.model = ProteinMPNN(cfg.model)
+        self.test_dataset_names = test_dataset_names  # for metrics
 
     def forward(
         self,
@@ -562,31 +687,37 @@ def main(args):
         args.repo_id, name=args.config_name, split="train", streaming=True
     )
     val_dataset = load_dataset(args.repo_id, name=args.config_name, split="val")
+    if args.model_type == "protein_mpnn":
+        transforms = proteinmpnn_transforms
+    elif args.model_type == "ligand_mpnn":
+        transforms = ligandmpnn_transforms
+    else:
+        raise ValueError(f"Unknown model type: {args.model_type}")
 
+    # pass split name for metrics - is there a better way?
     train_loader = torch.utils.data.DataLoader(
-        train_dataset.map(
-            proteinmpnn_transforms, fn_kwargs={"split_name": "train", "cfg": cfg}
-        ),
+        train_dataset.map(transforms, fn_kwargs={"cfg": cfg}),
         batch_size=16,
     )
     # TODO: add epoch end shuffling.
     val_loader = torch.utils.data.DataLoader(
-        val_dataset.map(
-            proteinmpnn_transforms, fn_kwargs={"split_name": "val", "cfg": cfg}
-        ),
+        val_dataset.map(transforms, fn_kwargs={"cfg": cfg}),
         batch_size=16,
     )
     test_loaders = [
         torch.utils.data.DataLoader(
             load_dataset(args.repo_id, name=args.config_name, split=split).map(
-                proteinmpnn_transforms, fn_kwargs={"split_name": split, "cfg": cfg}
+                transforms, fn_kwargs={"cfg": cfg}
             ),
             batch_size=16,
         )
         for split in args.test_split
     ]
 
-    model = ProteinMPNNForInverseFolding(cfg)
+    if args.model_type == "protein_mpnn":
+        model = ProteinMPNNForInverseFolding(cfg)
+    else:
+        raise ValueError(f"Unknown model type: {args.model_type}")
     trainer = pl.Trainer(
         max_epochs=100, callbacks=[pl.callbacks.ModelCheckpoint(monitor="val_loss")]
     )
@@ -602,6 +733,9 @@ if __name__ == "__main__":
         "--test_split",
         nargs="+",
         default=["test_ligand", "test_nucleotide", "test_metal"],
+    )
+    parser.add_argument(
+        "--model_type", default="protein_mpnn", choices=["protein_mpnn", "ligand_mpnn"]
     )
     args = parser.parse_args()
     main(args)

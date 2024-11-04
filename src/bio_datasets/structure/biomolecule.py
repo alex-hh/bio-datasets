@@ -416,43 +416,81 @@ class Biomolecule(Molecule):
             ]
             return selected_coords
 
+    def residue_separations(self):
+        return np.abs(
+            self.atoms.residue_index[:, None] - self.atoms.residue_index[None, :]
+        )
+
     def distances(
         self,
         atom_names: Union[str, List[str]],
         residue_mask_from: Optional[np.ndarray] = None,
         residue_mask_to: Optional[np.ndarray] = None,
-        nan_fill=None,
+        nan_fill: Optional[Union[float, str]] = None,
         multi_atom_calc_type: str = "min",
     ) -> np.ndarray:
         # TODO: handle nans
         # TODO: allow non-backbone atoms
+        # TODO: handle atoms belonging to wrong modality with nan masking.
+        # TODO: are these masks the right way round?
         if residue_mask_from is None:
             residue_mask_from = np.ones(self.num_residues, dtype=bool)
         if residue_mask_to is None:
             residue_mask_to = np.ones(self.num_residues, dtype=bool)
-        backbone_coords = self.backbone_coords()
-        if isinstance(atom_names, str) and atom_names in self.backbone_atoms:
-            at_index = self.backbone_atoms.index(atom_names)
+        backbone_coords = self.backbone_coords(atom_names)  # L, n_atoms, 3
+        raise NotImplementedError("check from / to masks")
+        if isinstance(atom_names, str):
+            assert (
+                backbone_coords.shape[1] == 1
+            ), "Expected single atom distance calculation"
+            backbone_coords = np.squeeze(backbone_coords, dim=1)
             dists = np.sqrt(
                 np.sum(
                     (
-                        backbone_coords[None, residue_mask_from, at_index, :]
-                        - backbone_coords[residue_mask_to, None, at_index, :]
+                        backbone_coords[None, residue_mask_from]
+                        - backbone_coords[residue_mask_to, None]
                     )
                     ** 2,
                     axis=-1,
                 )
-            )
+            )  # L_i, L_j
         else:
-            raise NotImplementedError(
-                "Muliple atom distance calculations not yet supported"
-            )
+            multi_atom_dists = np.sqrt(
+                np.sum(
+                    (
+                        backbone_coords[None, residue_mask_from, None, :]
+                        - backbone_coords[residue_mask_to, None, :None]
+                    )
+                    ** 2,
+                    axis=-1,
+                )
+            ).reshape(
+                (
+                    residue_mask_to.sum(),
+                    residue_mask_from.sum(),
+                    len(atom_names) * len(atom_names),
+                )
+            )  # L_i, L_j, n_atoms, n_atoms
+            if multi_atom_calc_type == "min":
+                dists = np.min(multi_atom_dists, axis=-1)
+            elif multi_atom_calc_type == "max":
+                dists = np.max(multi_atom_dists, axis=-1)
+            elif multi_atom_calc_type == "all":
+                dists = multi_atom_dists
         if nan_fill is not None:
             if isinstance(nan_fill, float) or isinstance(nan_fill, int):
                 dists = np.nan_to_num(dists, nan=nan_fill)
             elif nan_fill == "max":
-                max_dist = np.nanmax(dists, axis=-1)
-                dists = np.nan_to_num(dists, nan=max_dist)
+                if dists.ndim == 2:
+                    max_dist = np.nanmax(dists, axis=-1)
+                    dists = np.nan_to_num(dists, nan=max_dist)
+                elif dists.ndim == 3:
+                    max_dist = np.nanmax(dists, axis=(-1, -2))
+                    dists = np.nan_to_num(dists, nan=max_dist)
+                else:
+                    raise ValueError(
+                        f"Invalid dists shapel: {dists.shape}. Expected 2 or 3 dims."
+                    )
             else:
                 raise ValueError(
                     f"Invalid nan_fill: {nan_fill}. Please specify a float or int."
@@ -499,6 +537,14 @@ class BiomoleculeComplex(Biomolecule):
             [prot.atoms for prot in self._proteins_lookup.values()],
             bs.AtomArray(length=0),
         )
+
+    @property
+    def chain_ids(self):
+        return self._chain_ids
+
+    @property
+    def chains(self):
+        return [(chain_id, self.get_chain(chain_id)) for chain_id in self.chain_ids]
 
     def get_chain(self, chain_id: str) -> "BiomoleculeChain":
         return self._chains_lookup[chain_id]
