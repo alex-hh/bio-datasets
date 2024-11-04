@@ -3,19 +3,14 @@ Custom features for bio datasets.
 
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
-import copy
-import json
-from dataclasses import _asdict_inner
 from typing import ClassVar, Dict, Optional, Union
 
-import pyarrow as pa
 from datasets import Features, LargeList, Sequence
 from datasets.features.features import (
     FeatureType,
     cast_to_python_objects,
     decode_nested_example,
     encode_nested_example,
-    generate_from_arrow_type,
     register_feature,
     require_decoding,
 )
@@ -149,73 +144,7 @@ class Features(Features, dict):
             col: require_decoding(feature) for col, feature in self.items()
         }
 
-    @property
-    def arrow_schema(self):
-        """
-        Features schema.
-
-        Returns:
-            :obj:`pyarrow.Schema`
-        """
-        hf_metadata = {
-            "info": {
-                "features": self.to_fallback().to_dict(),
-                "bio_features": self.to_dict(),
-            }
-        }
-        return pa.schema(self.type).with_metadata(
-            {"huggingface": json.dumps(hf_metadata)}
-        )
-
-    @classmethod
-    def from_arrow_schema(cls, pa_schema: pa.Schema) -> "Features":
-        """
-        Construct [`Features`] from Arrow Schema.
-        It also checks the schema metadata for Hugging Face Datasets features.
-        Non-nullable fields are not supported and set to nullable.
-
-        Also, pa.dictionary is not supported and it uses its underlying type instead.
-        Therefore datasets convert DictionaryArray objects to their actual values.
-
-        Args:
-            pa_schema (`pyarrow.Schema`):
-                Arrow Schema.
-
-        Returns:
-            [`Features`]
-        """
-        # try to load features from the arrow schema metadata
-        metadata_features = Features()
-        if (
-            pa_schema.metadata is not None
-            and "huggingface".encode("utf-8") in pa_schema.metadata
-        ):
-            metadata = json.loads(
-                pa_schema.metadata["huggingface".encode("utf-8")].decode()
-            )
-            if (
-                "info" in metadata
-                and "bio_features" in metadata["info"]
-                and metadata["info"]["bio_features"] is not None
-            ):
-                metadata_features = Features.from_dict(metadata["info"]["bio_features"])
-            elif (
-                "info" in metadata
-                and "features" in metadata["info"]
-                and metadata["info"]["features"] is not None
-            ):
-                metadata_features = Features.from_dict(metadata["info"]["features"])
-        metadata_features_schema = metadata_features.arrow_schema
-        obj = {
-            field.name: (
-                metadata_features[field.name]
-                if field.name in metadata_features
-                and metadata_features_schema.field(field.name) == field
-                else generate_from_arrow_type(field.type)
-            )
-            for field in pa_schema
-        }
-        return cls(**obj)
+    # TODO: is arrow schema stuff necessary?
 
     def encode_example(self, example):
         """
