@@ -171,6 +171,8 @@ def protein_atom_array_from_dict(
                 aa = "C"
             if aa == "O":
                 aa = "K"
+            if aa in ["B", "J", "Z"]:
+                aa = "X"
             res_name = protein_constants.restype_1to3[aa]
             for atom_name in backbone_atoms:
                 annots = {}

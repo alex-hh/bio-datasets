@@ -18,6 +18,7 @@ packages = [
 pytest = ">=8.2.0"
 biotite = ">=1.0.0"
 foldcomp = ">=0.0.7"
+huggingface-hub = { git = "https://github.com/huggingface/huggingface_hub.git"}  # TODO update when https://github.com/huggingface/huggingface_hub/pull/2626 released
 datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes-new"}
 nerfax = {git = "https://github.com/PeptoneLtd/nerfax.git"}
 
