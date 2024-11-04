@@ -5,7 +5,7 @@ Bringing bio (molecules and more) to the HuggingFace Datasets library.
 This (unofficial!) extension to Datasets is designed to make the following things as easy as possible:
 
 1. efficient storage of biological data for ML
-2. low-overhead loading of data into python objects from standard bio data libraries, convenient for downstream processing
+2. low-overhead loading of data into standardised python objects from bio data libraries, convenient for downstream processing
 3. sharing of datasets large and small
 
 We aim to do these three things and *no more*, leaving you to get on with the science!
