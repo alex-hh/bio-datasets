@@ -156,7 +156,9 @@ def load_structure(
     return structure
 
 
-def atom_array_from_dict(d: dict) -> bs.AtomArray:
+def protein_atom_array_from_dict(
+    d: dict, backbone_atoms: List[str] = ["N", "CA", "C", "O"]
+) -> bs.AtomArray:
     sequence = d["sequence"]
     annots_keys = [k for k in d.keys() if k in extra_annots]
     if "backbone_coords" in d:
@@ -170,7 +172,7 @@ def atom_array_from_dict(d: dict) -> bs.AtomArray:
             if aa == "O":
                 aa = "K"
             res_name = protein_constants.restype_1to3[aa]
-            for atom_name in protein_constants.BACKBONE_ATOMS:
+            for atom_name in backbone_atoms:
                 annots = {}
                 for k in annots_keys:
                     annots[k] = d[k][res_ix]
@@ -391,7 +393,7 @@ class AtomArrayFeature(CustomFeature):
     """
 
     residue_dictionary: Optional[Union[ResidueDictionary, Dict]] = None
-    drop_sidechains: ClassVar[bool] = False
+    backbone_only: ClassVar[bool] = False
     requires_encoding: bool = True
     requires_decoding: bool = True
     all_atoms_present: bool = (
@@ -672,7 +674,7 @@ class AtomArrayFeature(CustomFeature):
                 restype_index,
                 residue_dictionary=self.residue_dictionary,
                 chain_id=chain_id,
-                backbone_only=self.drop_sidechains,
+                backbone_only=self.backbone_only,
             )
             residue_index = (
                 np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
@@ -962,7 +964,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     """
 
     all_atoms_present: bool = False
-    drop_sidechains: bool = False
+    backbone_only: bool = False
     internal_coords_type: str = None  # foldcomp, idealised, or pnerf
     _type: str = field(
         default="ProteinAtomArrayFeature", init=False, repr=False
@@ -1009,11 +1011,16 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     ) -> dict:
         # TODO: share this code
         if isinstance(value, dict) and "sequence" in value:
-            value = atom_array_from_dict(value)
+            value = protein_atom_array_from_dict(
+                value,
+                self.residue_dictionary.backbone_atoms
+                if self.residue_dictionary
+                else ["N", "CA", "C", "O"],
+            )
             return self.encode_example(value)
         if isinstance(value, ProteinMixin):
             # TODO: switch to extracting backbone.
-            if self.drop_sidechains:
+            if self.backbone_only:
                 value = value.backbone()
             return super().encode_example(
                 value.atoms, is_standardised=value.is_standardised
@@ -1026,7 +1033,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             if not is_standardised:
                 value = value[~np.isin(value.element, ["H", "D"])]
                 value = value[filter_amino_acids(value)]
-            if self.drop_sidechains:
+            if self.backbone_only:
                 backbone_mask = np.isin(
                     value.atom_name, self.residue_dictionary.backbone_atoms
                 )
@@ -1043,10 +1050,10 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         chain_ids = np.unique(atoms.chain_id)
         if len(chain_ids) > 1:
             assert (
-                not self.drop_sidechains
+                not self.backbone_only
             ), "Cannot drop sidechains for multi-chain proteins."
             return ProteinComplex.from_atoms(atoms)
-        return ProteinChain(atoms, backbone_only=self.drop_sidechains)
+        return ProteinChain(atoms, backbone_only=self.backbone_only)
 
 
 register_bio_feature(StructureFeature)
