@@ -13,6 +13,7 @@ from datasets.features.features import (
     Audio,
     ClassLabel,
     Features,
+    FeatureType,
     Image,
     LargeList,
     Sequence,
@@ -20,9 +21,6 @@ from datasets.features.features import (
     Value,
     Video,
     _ArrayXD,
-)
-from datasets.features.features import (
-    FeatureType,
     _check_non_null_non_empty_recursive,
     cast_to_python_objects,
     generate_from_arrow_type,
