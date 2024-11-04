@@ -1,6 +1,8 @@
 import importlib
 import inspect
-from typing import Optional
+import json
+from dataclasses import asdict
+from typing import Dict, Optional
 
 import datasets
 
@@ -24,6 +26,7 @@ def override_features():
     def cast(self, target_schema, *args, **kwargs):
         """
         Cast table values to another schema.
+        Only overridden because of Features import.
 
         Args:
             target_schema (`Schema`):
@@ -64,7 +67,22 @@ def override_features():
             blocks.append(new_tables)
         return datasets.table.ConcatenationTable(table, blocks)
 
+    @staticmethod
+    def _build_metadata(
+        info: DatasetInfo, fingerprint: Optional[str] = None
+    ) -> Dict[str, str]:
+        info_keys = [
+            "features"
+        ]  # we can add support for more DatasetInfo keys in the future
+        info_as_dict = info.to_dict()
+        metadata = {}
+        metadata["info"] = {key: info_as_dict[key] for key in info_keys}
+        if fingerprint is not None:
+            metadata["fingerprint"] = fingerprint
+        return {"huggingface": json.dumps(metadata)}
+
     datasets.table.Table.cast = cast
+    datasets.arrow_writer.ArrowWriter._build_metadata = _build_metadata
 
     datasets.info.DatasetInfo = DatasetInfo
     datasets.DatasetInfo = DatasetInfo
@@ -125,4 +143,8 @@ _PACKAGED_DATASETS_MODULES.update(_PACKAGED_BIO_MODULES)
 from datasets import Dataset, load_dataset
 
 # safe references to datasets objects to avoid import order errors due to monkey patching
+# otherwise just import bio_datasets before importing anything from datasets
 from datasets.features import *
+from datasets.splits import *
+
+# need to be careful about overloading variables

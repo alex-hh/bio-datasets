@@ -34,6 +34,8 @@ class DatasetInfo(DatasetInfo):
 
     def __post_init__(self):
         super().__post_init__()
+        if self.bio_features is None and self.features is not None:
+            self.bio_features = self.features
         if self.bio_features is not None and not isinstance(
             self.bio_features, Features
         ):
@@ -42,14 +44,21 @@ class DatasetInfo(DatasetInfo):
             self.features = self.bio_features
 
     def _to_yaml_dict(self) -> dict:
-        self.features = self.bio_features.to_fallback()
+        # sometimes features are None
+        if self.bio_features is not None:
+            self.features = self.bio_features.to_fallback()
         ret = super()._to_yaml_dict()
-        self.features = self.bio_features
+        if self.bio_features is not None:
+            self.features = self.bio_features
         return ret
+
+    @classmethod
+    def from_dict(cls, dict):
+        return super().from_dict(dict)
 
     def to_dict(self):
         new_info = self.copy()
-        new_info.features = new_info.features.to_fallback()
+        new_info.features = self.features.to_fallback()
         return asdict(new_info)
 
     def _dump_info(self, file, pretty_print=False):
@@ -64,7 +73,9 @@ class DatasetInfo(DatasetInfo):
     def _from_yaml_dict(cls, yaml_data: dict) -> "DatasetInfo":
         yaml_data = copy.deepcopy(yaml_data)
         if yaml_data.get("bio_features") is not None:
-            yaml_data["features"] = Features._from_yaml_list(yaml_data["bio_features"])
+            yaml_data["bio_features"] = Features._from_yaml_list(
+                yaml_data["bio_features"]
+            )
         if yaml_data.get("features") is not None:
             yaml_data["features"] = Features._from_yaml_list(yaml_data["features"])
         if yaml_data.get("splits") is not None:
