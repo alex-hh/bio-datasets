@@ -164,7 +164,6 @@ class Features(Features, dict):
                 "bio_features": self.to_dict(),
             }
         }
-        print("arrow schema", hf_metadata["info"]["features"])
         return pa.schema(self.type).with_metadata(
             {"huggingface": json.dumps(hf_metadata)}
         )
@@ -195,7 +194,6 @@ class Features(Features, dict):
             metadata = json.loads(
                 pa_schema.metadata["huggingface".encode("utf-8")].decode()
             )
-            print("from arrow schema", metadata)
             if (
                 "info" in metadata
                 and "bio_features" in metadata["info"]
