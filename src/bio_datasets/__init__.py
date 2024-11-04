@@ -1,14 +1,16 @@
-import copy
-import dataclasses
 import importlib
 import inspect
+import json
+from dataclasses import asdict
+from typing import Dict, Optional
 
 import datasets
 
 from .features import *
+from .info import DatasetInfo
 
 
-def monkey_patch_features():
+def override_features():
 
     SPARK_AVAILABLE = importlib.util.find_spec("pyspark") is not None
 
@@ -20,11 +22,11 @@ def monkey_patch_features():
     import datasets.io.parquet
     import datasets.io.sql
     import datasets.io.text
-    from datasets.splits import SplitDict
 
     def cast(self, target_schema, *args, **kwargs):
         """
         Cast table values to another schema.
+        Only overridden because of Features import.
 
         Args:
             target_schema (`Schema`):
@@ -65,60 +67,33 @@ def monkey_patch_features():
             blocks.append(new_tables)
         return datasets.table.ConcatenationTable(table, blocks)
 
+    @staticmethod
+    def _build_metadata(
+        info: DatasetInfo, fingerprint: Optional[str] = None
+    ) -> Dict[str, str]:
+        info_keys = [
+            "features"
+        ]  # we can add support for more DatasetInfo keys in the future
+        info_as_dict = info.to_dict()
+        metadata = {}
+        metadata["info"] = {key: info_as_dict[key] for key in info_keys}
+        if fingerprint is not None:
+            metadata["fingerprint"] = fingerprint
+        return {"huggingface": json.dumps(metadata)}
+
     datasets.table.Table.cast = cast
+    datasets.arrow_writer.ArrowWriter._build_metadata = _build_metadata
 
-    def _to_yaml_dict(self) -> dict:
-        yaml_dict = {}
-        fallback_features = self.features.to_fallback()
-        dataset_info_dict = dataclasses.asdict(self)
-        for key in dataset_info_dict:
-            if key == "features":
-                yaml_dict["bio_features"] = dataset_info_dict[
-                    "features"
-                ]._to_yaml_list()
-                yaml_dict["features"] = fallback_features._to_yaml_list()
-            elif key in self._INCLUDED_INFO_IN_YAML:
-                value = getattr(self, key)
-                if hasattr(value, "_to_yaml_list"):  # Features, SplitDict
-                    yaml_dict[key] = value._to_yaml_list()
-                elif hasattr(value, "_to_yaml_string"):  # Version
-                    yaml_dict[key] = value._to_yaml_string()
-                else:
-                    yaml_dict[key] = value
-        return yaml_dict
-
-    @classmethod
-    def _from_yaml_dict(cls, yaml_data: dict) -> "DatasetInfo":
-        yaml_data = copy.deepcopy(yaml_data)
-        if yaml_data.get("bio_features") is not None:
-            yaml_data["features"] = Features._from_yaml_list(yaml_data["bio_features"])
-        elif yaml_data.get("features") is not None:
-            yaml_data["features"] = Features._from_yaml_list(yaml_data["features"])
-        if yaml_data.get("splits") is not None:
-            yaml_data["splits"] = SplitDict._from_yaml_list(yaml_data["splits"])
-        field_names = {f.name for f in dataclasses.fields(cls)}
-        return cls(**{k: v for k, v in yaml_data.items() if k in field_names})
-
-    datasets.info.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.info.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.arrow_writer.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.arrow_writer.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.arrow_dataset.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.arrow_dataset.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.builder.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.builder.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.combine.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.combine.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.dataset_dict.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.dataset_dict.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.inspect.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.inspect.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.iterable_dataset.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.iterable_dataset.DatasetInfo._to_yaml_dict = _to_yaml_dict
-    datasets.load.DatasetInfo._from_yaml_dict = _from_yaml_dict
-    datasets.load.DatasetInfo._to_yaml_dict = _to_yaml_dict
+    datasets.info.DatasetInfo = DatasetInfo
+    datasets.DatasetInfo = DatasetInfo
+    datasets.arrow_writer.DatasetInfo = DatasetInfo
+    datasets.arrow_dataset.DatasetInfo = DatasetInfo
+    datasets.builder.DatasetInfo = DatasetInfo
+    datasets.combine.DatasetInfo = DatasetInfo
+    datasets.dataset_dict.DatasetInfo = DatasetInfo
+    datasets.inspect.DatasetInfo = DatasetInfo
+    datasets.iterable_dataset.DatasetInfo = DatasetInfo
+    datasets.load.DatasetInfo = DatasetInfo
 
     datasets.Features = Features
     datasets.features.Features = Features
@@ -142,10 +117,12 @@ def monkey_patch_features():
     # datasets.formatting.polars_formatter.Features = BioFeatures
 
     if SPARK_AVAILABLE:
+        import datasets.io.spark
+
         datasets.io.spark.Features = Features
 
 
-monkey_patch_features()
+override_features()
 
 
 from datasets.packaged_modules import _PACKAGED_DATASETS_MODULES, _hash_python_lines
@@ -166,4 +143,8 @@ _PACKAGED_DATASETS_MODULES.update(_PACKAGED_BIO_MODULES)
 from datasets import Dataset, load_dataset
 
 # safe references to datasets objects to avoid import order errors due to monkey patching
+# otherwise just import bio_datasets before importing anything from datasets
 from datasets.features import *
+from datasets.splits import *
+
+# need to be careful about overloading variables
