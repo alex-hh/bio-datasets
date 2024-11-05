@@ -1,9 +1,11 @@
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 from biotite import structure as bs
-from typing import List, Optional, Tuple, Union
+
 from .biomolecule import Biomolecule, BiomoleculeChain, T
-from .protein import ProteinChain, ProteinDictionary, ProteinComplex
-from .residue import ResidueDictionary, CHEM_COMPONENT_CATEGORIES
+from .protein import ProteinChain, ProteinComplex, ProteinDictionary
+from .residue import CHEM_COMPONENT_CATEGORIES, ResidueDictionary
 
 
 class BiomoleculeComplex(Biomolecule):
@@ -12,44 +14,63 @@ class BiomoleculeComplex(Biomolecule):
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
 
     @classmethod
-    def from_atoms(cls, atoms: bs.AtomArray, residue_dictionary: Optional[ResidueDictionary] = None):
+    def from_atoms(
+        cls, atoms: bs.AtomArray, residue_dictionary: Optional[ResidueDictionary] = None
+    ):
         # TODO: check chain-based stuff works with pdb files as well as cif files - are chain ids null sometimes for hetatms?
         chains = []
-        chain_categories = [CHEM_COMPONENT_CATEGORIES[r] for r in atoms.res_name[atoms.chain_id == chain_id]]
+        chain_categories = [
+            CHEM_COMPONENT_CATEGORIES[r]
+            for r in atoms.res_name[atoms.chain_id == chain_id]
+        ]
         if len(set(chain_categories)) == 1:
             category = chain_categories[0]
             if category == "protein":
                 return ProteinComplex.from_atoms(
                     atoms,
-                    residue_dictionary=ProteinDictionary.from_ccd() if residue_dictionary is None else residue_dictionary
+                    residue_dictionary=ProteinDictionary.from_ccd()
+                    if residue_dictionary is None
+                    else residue_dictionary,
                 )
             else:
                 raise ValueError(f"Unsupported chain category: {category}")
         else:
-            print(f"Warning: found multiple categories in chain {chain_id}: {chain_categories}")
-        for chain_id, chain_category in zip(np.unique(atoms.chain_id), chain_categories):
+            print(
+                f"Warning: found multiple categories in chain {chain_id}: {chain_categories}"
+            )
+        for chain_id, chain_category in zip(
+            np.unique(atoms.chain_id), chain_categories
+        ):
             # TODO: auto-ccd residue dictionary
             if len(np.unique(chain_category)) > 1:
                 # raise ValueError(f"Found multiple categories in chain {chain_id}: {chain_categories}")
-                print(f"Warning: found multiple categories in chain {chain_id}: {chain_categories}")
+                print(
+                    f"Warning: found multiple categories in chain {chain_id}: {chain_categories}"
+                )
                 chains.append(
                     BiomoleculeChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=ResidueDictionary.from_ccd() if residue_dictionary is None else residue_dictionary
+                        residue_dictionary=ResidueDictionary.from_ccd()
+                        if residue_dictionary is None
+                        else residue_dictionary,
                     )
                 )
             elif chain_category[0] == "protein":
                 chains.append(
                     ProteinChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=ProteinDictionary.from_ccd() if residue_dictionary is None else residue_dictionary
+                        residue_dictionary=ProteinDictionary.from_ccd()
+                        if residue_dictionary is None
+                        else residue_dictionary,
                     )
                 )
             elif chain_category[0] in ["dna", "rna", "saccharide", "chemical"]:
                 chains.append(
                     BiomoleculeChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=ResidueDictionary.from_ccd() if residue_dictionary is None else residue_dictionary
+                        residue_dictionary=ResidueDictionary.from_ccd()
+                        if residue_dictionary is None
+                        else residue_dictionary,
                     )
                 )
             else:

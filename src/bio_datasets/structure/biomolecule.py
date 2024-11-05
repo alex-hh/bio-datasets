@@ -199,11 +199,24 @@ class Biomolecule(Molecule):
         ), "Elements must be present to exclude hydrogens"
         atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
         residue_starts = get_residue_starts(atoms)
-        if "atomtype_index" not in atoms._annot:
+        if (
+            "atomtype_index" not in atoms._annot
+            and residue_dictionary.atom_types is not None
+        ):
             atoms.set_annotation(
                 "atomtype_index",
                 map_categories_to_indices(
                     atoms.atom_name, residue_dictionary.atom_types
+                ),
+            )
+        if (
+            "elemtype_index" not in atoms._annot
+            and residue_dictionary.element_types is not None
+        ):
+            atoms.set_annotation(
+                "elemtype_index",
+                map_categories_to_indices(
+                    atoms.element, residue_dictionary.element_types
                 ),
             )
         if "restype_index" not in atoms._annot:
@@ -332,6 +345,7 @@ class Biomolecule(Molecule):
             print("Filled in missing atoms:\n", "\n".join(missing_atoms_strings))
         new_atom_array.set_annotation("mask", mask)
         if backbone_only:
+            assert residue_dictionary.backbone_atoms is not None
             # TODO: more efficient backbone only
             new_atom_array = new_atom_array[
                 np.isin(new_atom_array.atom_name, residue_dictionary.backbone_atomss)
@@ -384,7 +398,8 @@ class Biomolecule(Molecule):
 
     @property
     def backbone_mask(self):
-        return np.isin(self.atoms.atom_name, self.backbone_atoms)
+        assert self.residue_dictionary.backbone_atoms is not None
+        return np.isin(self.atoms.atom_name, self.residue_dictionary.backbone_atoms)
 
     def __len__(self):
         return self.num_residues  # n.b. -- not equal to len(self.atoms)

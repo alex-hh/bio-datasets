@@ -11,11 +11,7 @@ from typing import Dict, List, Optional, Union
 import biotite.structure as bs
 import numpy as np
 
-from bio_datasets.structure.biomolecule import (
-    Biomolecule,
-    BiomoleculeChain,
-    BiomoleculeComplex,
-)
+from bio_datasets.structure.biomolecule import Biomolecule, BiomoleculeChain
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import ResidueDictionary
 
@@ -43,6 +39,9 @@ class ProteinDictionary(ResidueDictionary):
     )
     residue_atoms: Dict[str, List[str]] = field(
         default_factory=lambda: copy.deepcopy(protein_constants.residue_atoms)
+    )
+    residue_elements: Dict[str, List[str]] = field(
+        default_factory=lambda: copy.deepcopy(protein_constants.residue_elements)
     )
     backbone_atoms: List[str] = field(default_factory=lambda: ["N", "CA", "C", "O"])
     unknown_residue_name: str = field(default_factory=lambda: "UNK")
@@ -276,7 +275,7 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         return self.atoms.chain_id[0]
 
 
-class ProteinComplex(ProteinMixin, BiomoleculeComplex):
+class ProteinComplex(ProteinMixin, Biomolecule):
     """A protein complex."""
 
     def __init__(self, proteins: List[ProteinChain]):

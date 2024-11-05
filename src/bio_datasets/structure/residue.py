@@ -63,6 +63,10 @@ RNA_TYPES = [
 
 
 SACCHARIDE_TYPES = [
+    "D-SACCHARIDE",
+    "D-saccharide",
+    "D-saccharide, alpha linking",
+    "D-saccharide, beta linking",
     "L-SACCHARIDE",
     "L-saccharide",
     "L-saccharide, alpha linking",
@@ -85,6 +89,7 @@ def get_component_types():
 CHEM_COMPONENT_TYPES = get_component_types()
 
 
+# TODO: speed these up
 def get_component_categories():
     categories = {}
     for name, chem_type in CHEM_COMPONENT_TYPES.items():
@@ -307,7 +312,7 @@ class ChemicalComponentDictionary:
         for name in res_names:
             atom_names = []
             element_types = []
-            comp = get_component(ccd_data, name)
+            comp = get_component(ccd_data, res_name=name)
             for at, elem in zip(comp.atom_name, comp.element_symbol):
                 if keep_hydrogens or (elem != "H" and elem != "D"):
                     atom_names.append(at)
