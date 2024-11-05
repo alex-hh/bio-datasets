@@ -29,27 +29,6 @@ backbone_atoms = [
 ]
 
 
-class RNADictionary(ResidueDictionary):
-
-    """Defaults configure a dictionary with just the 4 standard bases"""
-
-    # TODO: these are actually all constants
-    residue_names: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(rna_nucleotides)
-    )
-    residue_types: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(rna_nucleotides)
-    )
-    residue_atoms: Dict[str, List[str]] = field(
-        default_factory=lambda: copy.deepcopy(rna_residue_atoms)
-    )
-    residue_elements: Dict[str, List[str]] = field(
-        default_factory=lambda: copy.deepcopy(rna_residue_elements)
-    )
-    backbone_atoms: List[str] = field(default_factory=lambda: backbone_atoms)
-    unknown_residue_name: str = field(default_factory=lambda: "UNK")
-
-
 class RNAChain(NucleotideChain):
     def __init__(
         self,
@@ -62,7 +41,9 @@ class RNAChain(NucleotideChain):
         nonstandard_as_lowercase: bool = False,
     ):
         if residue_dictionary is None:
-            residue_dictionary = RNADictionary()
+            residue_dictionary = ResidueDictionary.from_ccd(
+                residue_names=rna_nucleotides, backbone_atoms=backbone_atoms
+            )
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,

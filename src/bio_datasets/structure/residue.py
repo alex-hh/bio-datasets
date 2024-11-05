@@ -124,9 +124,11 @@ class ResidueDictionary:
     conversions: Optional[List[Dict]] = None
 
     def __post_init__(self):
-        assert len(np.unique(self.residue_types)) == len(
-            self.residue_types
-        ), "Duplicate residue types"
+        if self.residue_types is not None:
+            assert len(np.unique(self.residue_types)) == len(
+                self.residue_types
+            ), "Duplicate residue types"
+            assert len(self.residue_types) == len(self.residue_names)
         if self.element_types is not None:
             assert len(np.unique(self.element_types)) == len(
                 self.element_types
@@ -142,6 +144,15 @@ class ResidueDictionary:
         assert len(np.unique(self.residue_names)) == len(
             self.residue_names
         ), "Duplicate residue names"
+        assert all([res in self.residue_atoms for res in self.residue_names])
+        assert all([res in self.residue_elements for res in self.residue_names])
+        if self.conversions is not None:
+            for conversion in self.conversions:
+                assert conversion["to_residue"] in self.residue_names
+                # tuples get converted to lists during serialization so we need to convert them back for eq checks
+                conversion["atom_swaps"] = [
+                    tuple(swaps) for swaps in conversion["atom_swaps"]
+                ]
 
     @classmethod
     def from_ccd(
@@ -149,6 +160,10 @@ class ResidueDictionary:
         residue_names: Optional[List[str]] = None,
         category: Optional[str] = None,
         keep_hydrogens: bool = False,
+        backbone_atoms: Optional[List[str]] = None,
+        atom_types: Optional[List[str]] = None,
+        unknown_residue_name: str = "UNK",
+        conversions: Optional[List[Dict]] = None,
     ):
         ccd_data = get_ccd()
         res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
@@ -166,11 +181,18 @@ class ResidueDictionary:
                 [CHEM_COMPONENT_CATEGORIES[name] == category for name in res_names]
             )
             res_names = list(res_names[mask])
+        else:
+            categories = list(
+                set([CHEM_COMPONENT_CATEGORIES[name] for name in res_names])
+            )
         # one-letter codes only used for unambiguous and complete residue dictionaries
-        res_types = [CHEM_COMPONENT_3TO1[name] for name in res_names]
         # TODO: check this covers all unknown cases
-        if not all([res_type and not res_type == "?" for res_type in res_types]):
+        if len(categories) == 1 and categories[0] != "chemical":
+            res_types = [CHEM_COMPONENT_3TO1[name] for name in res_names]
+            assert all([res_type and not res_type == "?" for res_type in res_types])
+        else:
             res_types = None
+
         res_atom_names = {}
         res_element_types = {}
         for (
@@ -181,7 +203,7 @@ class ResidueDictionary:
             atom_names = []
             element_types = []
             comp = get_component(ccd_data, res_name=name)
-            for at, elem in zip(comp.atom_name, comp.element_symbol):
+            for at, elem in zip(comp.atom_name, comp.element):
                 if keep_hydrogens or (elem != "H" and elem != "D"):
                     atom_names.append(at)
                     element_types.append(elem)
@@ -190,24 +212,16 @@ class ResidueDictionary:
             res_element_types[name] = element_types
 
         return cls(
-            residue_names=res_names[mask],
+            residue_names=res_names,
             residue_types=res_types,
             residue_atoms=res_atom_names,
             residue_elements=res_element_types,
-            backbone_atoms=None,
-            unknown_residue_name="UNK",  # appropriate?
+            backbone_atoms=backbone_atoms,
+            unknown_residue_name=unknown_residue_name,
             element_types=ALL_ELEMENT_TYPES.copy(),
-            atom_types=None,
+            atom_types=atom_types,
+            conversions=conversions,
         )
-
-    def __post_init__(self):
-        assert len(self.residue_names) == len(self.residue_types)
-        if self.conversions is not None:
-            for conversion in self.conversions:
-                # tuples get converted to lists during serialization so we need to convert them back for eq checks
-                conversion["atom_swaps"] = [
-                    tuple(swaps) for swaps in conversion["atom_swaps"]
-                ]
 
     def __str__(self):
         return f"ResidueDictionary ({len(self.residue_names)} residue types"
