@@ -119,6 +119,7 @@ CHEM_COMPONENT_CATEGORIES = get_component_categories()
 CHEM_COMPONENT_3TO1 = get_component_3to1()
 
 
+# TODO: auto convert unknown residues?
 @dataclass
 class ResidueDictionary:
     residue_names: List[str]
@@ -132,6 +133,48 @@ class ResidueDictionary:
     backbone_atoms: Optional[List[str]] = None
     conversions: Optional[List[Dict]] = None
 
+    @classmethod
+    def from_ccd(cls, category: Optional[str] = None, keep_hydrogens: bool = False):
+        assert category in [
+            "protein",
+            "dna",
+            "rna",
+            "saccharide",
+            "chemical",
+        ], f"Unknown category: {category}"
+        ccd_data = get_ccd()
+        res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
+        if category is not None:
+            mask = np.array(
+                [CHEM_COMPONENT_CATEGORIES[name] == category for name in res_names]
+            )
+            res_names = list(res_names[mask])
+        res_types = [CHEM_COMPONENT_3TO1[name] for name in res_names]
+        res_atom_names = {}
+        res_element_types = {}
+        for name in res_names:
+            atom_names = []
+            element_types = []
+            comp = get_component(ccd_data, res_name=name)
+            for at, elem in zip(comp.atom_name, comp.element_symbol):
+                if keep_hydrogens or (elem != "H" and elem != "D"):
+                    atom_names.append(at)
+                    element_types.append(elem)
+
+            res_atom_names[name] = atom_names
+            res_element_types[name] = element_types
+
+        return cls(
+            residue_names=res_names[mask],
+            residue_types=res_types[mask],
+            residue_atoms=res_atom_names,
+            residue_elements=res_element_types,
+            backbone_atoms=None,
+            unknown_residue_name="UNK",  # appropriate?
+            element_types=ALL_ELEMENT_TYPES.copy(),
+            atom_types=None,
+        )
+
     def __post_init__(self):
         assert len(self.residue_names) == len(self.residue_types)
         if self.conversions is not None:
@@ -142,10 +185,7 @@ class ResidueDictionary:
                 ]
 
     def __str__(self):
-        return (
-            f"ResidueDictionary ({len(self.residue_names)} residue types, "
-            f"{len(self.atom_types)} atom types)"
-        )
+        return f"ResidueDictionary ({len(self.residue_names)} residue types"
 
     @property
     def residue_sizes(self):
@@ -158,6 +198,7 @@ class ResidueDictionary:
         """
         Get a mapping from atom type index to expected index relative to the start of a given residue.
         """
+        assert self.atom_types is not None
         all_atom_indices_mapping = []
         for resname in self.residue_names:
             if resname == self.unknown_residue_name:
@@ -180,17 +221,10 @@ class ResidueDictionary:
         return self.residue_sizes.max()
 
     @property
-    def unique_atom_types(self):
-        """How many atom names across all residues (37 for proteins).
-
-        Typically should be equal to len(self.atom_types)
-        """
-        raise NotImplementedError()
-
-    @property
     def total_element_types(self):
         """How many element types across all proteins"""
-        raise NotImplementedError()
+        assert self.element_types is not None
+        return len(self.element_types)
 
     @property
     def standard_atoms_by_residue(self):
@@ -279,56 +313,3 @@ def get_residue_starts_mask(
     mask = np.zeros(len(atoms), dtype=bool)
     mask[residue_starts] = True
     return mask
-
-
-class ChemicalComponentDictionary:
-    """
-    Uses biotite's CCD.
-    TODO: decide whether to save CCD or just use user's biotite CCD.
-
-    N.B. most components don't have a one letter code.
-
-    What is appropriate unknown residue name?
-    """
-
-    @classmethod
-    def from_biotite_ccd(cls, category: str, keep_hydrogens: bool = False):
-        assert category in [
-            "protein",
-            "dna",
-            "rna",
-            "saccharide",
-            "chemical",
-        ], f"Unknown category: {category}"
-        ccd_data = get_ccd()
-        res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
-        mask = np.array(
-            [CHEM_COMPONENT_CATEGORIES[name] == category for name in res_names]
-        )
-        res_names = list(res_names[mask])
-        res_types = [CHEM_COMPONENT_3TO1[name] for name in res_names]
-        res_atom_names = {}
-        res_element_types = {}
-        for name in res_names:
-            atom_names = []
-            element_types = []
-            comp = get_component(ccd_data, res_name=name)
-            for at, elem in zip(comp.atom_name, comp.element_symbol):
-                if keep_hydrogens or (elem != "H" and elem != "D"):
-                    atom_names.append(at)
-                    element_types.append(elem)
-
-            res_atom_names[name] = atom_names
-            res_element_types[name] = element_types
-
-        return cls(
-            residue_names=res_names[mask],
-            residue_types=res_types[mask],
-            residue_atoms=res_atom_names,
-            residue_elements=res_element_types,
-            backbone_atoms=None,
-            unknown_residue_name="UNK",
-            element_types=ALL_ELEMENT_TYPES.copy(),
-            atom_types=None,
-            # atom_types=ALL_ATOM_TYPES.copy(),
-        )

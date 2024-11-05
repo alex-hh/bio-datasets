@@ -57,6 +57,7 @@ class ProteinDictionary(ResidueDictionary):
         return all(len(res_ats) <= 14 for res_ats in self.residue_atoms.values())
 
     def _check_atom37_compatible(self):
+        assert self.atom_types is not None
         return all(
             at in protein_constants.atom_types
             for res_ats in self.residue_atoms.values()
@@ -86,6 +87,7 @@ class ProteinDictionary(ResidueDictionary):
         return residue_sizes
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
+        assert self.atom_types is not None
         expected_relative_atom_indices = np.zeros(restype_index.shape[0]).astype(int)
         oxt_id = self.atom_types.index("OXT")
         oxt_mask = atomtype_index == oxt_id

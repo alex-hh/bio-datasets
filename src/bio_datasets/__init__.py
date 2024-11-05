@@ -2,9 +2,16 @@ import importlib
 import inspect
 import json
 from dataclasses import asdict
+from pathlib import Path
 from typing import Dict, Optional
 
 import datasets
+
+ccd_path = Path(__file__).parent / "structure" / "library" / "components.bcif"
+from biotite.structure.info import set_ccd_path
+
+# use reprocessed ccd version which includes smiles descriptors
+set_ccd_path(ccd_path)
 
 from .features import *
 from .info import DatasetInfo

@@ -3,12 +3,18 @@ import logging
 from collections import defaultdict
 from io import StringIO
 from pathlib import Path
+
 import numpy as np
 import requests
 from biotite.structure.io.pdbx import *
 
 OUTPUT_CCD = (
-    Path(__file__).parent / "src" / "biotite" / "structure" / "info" / "components.bcif"
+    Path(__file__).parent
+    / "src"
+    / "bio_datasets"
+    / "structure"
+    / "library"
+    / "components.bcif"
 )
 CCD_URL = "https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz"
 
@@ -31,7 +37,17 @@ def concatenate_ccd(categories=None):
     """
 
     logging.info("Download and read CCD...")
-    ccd_cif_text = gzip.decompress(requests.get(CCD_URL).content).decode()
+    # ccd_cif_text = gzip.decompress(requests.get(CCD_URL).content).decode()
+    ccd_cif_text = gzip.decompress(
+        (
+            Path(__file__).parent
+            / "src"
+            / "bio_datasets"
+            / "structure"
+            / "library"
+            / "components.cif.gz"
+        ).read_bytes()
+    ).decode()
     ccd_file = CIFFile.read(StringIO(ccd_cif_text))
 
     compressed_block = BinaryCIFBlock()
@@ -188,5 +204,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
     OUTPUT_CCD.parent.mkdir(parents=True, exist_ok=True)
 
-    compressed_ccd = concatenate_ccd(["chem_comp", "chem_comp_atom", "chem_comp_bond"])
+    compressed_ccd = concatenate_ccd()
     compressed_ccd.write(OUTPUT_CCD)
