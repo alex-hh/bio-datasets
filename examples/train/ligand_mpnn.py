@@ -11,13 +11,12 @@ with a transition metal (Figure 2A). For comparison, we retrained ProteinMPNN on
 training dataset of PDB biounits as LigandMPNN, except none of the context atoms were
 provided during training.`
 
-`The median sequence recoveries (ten designed sequences
-per protein) near small molecules were 50.4% for Rosetta using the genpot energy function
-(18), 50.4% for ProteinMPNN, and 63.3% for LigandMPNN. For residues near nucleotides,
-median sequence recoveries were 35.2% for Rosetta (11) (using Rosetta energy optimized
-for protein-DNA interfaces), 34.0% for ProteinMPNN, and 50.5% for LigandMPNN, and for
-residues near metals, 36.0% for Rosetta (18), 40.6% for ProteinMPNN, and 77.5% for
-LigandMPNN (Figure 2A). Sequence recoveries were consistently higher for LigandMPNN
+`The median sequence recoveries (ten designed sequences per protein) near small molecules were
+50.4% for Rosetta using the genpot energy function (18), 50.4% for ProteinMPNN, and 63.3% for
+LigandMPNN. For residues near nucleotides, median sequence recoveries were 35.2% for Rosetta (11)
+(using Rosetta energy optimized for protein-DNA interfaces), 34.0% for ProteinMPNN, and 50.5%
+for LigandMPNN, and for residues near metals, 36.0% for Rosetta (18), 40.6% for ProteinMPNN,
+and 77.5% for LigandMPNN (Figure 2A). Sequence recoveries were consistently higher for LigandMPNN
 over most proteins in the validation data set`
 
 Splits available at: https://github.com/dauparas/LigandMPNN/tree/main/training
@@ -31,6 +30,18 @@ Finally, a model trained without chemical element types as input features had mu
 recovery near metals (8% difference, Fig. S1D), but almost the same sequence recovery
 near small molecules and nucleic acids suggesting that the model can to some extent infer
 chemical element identity from bonded geometry.
+
+`To transfer information from ligand atoms to protein residues, we construct a protein-ligand graph
+with protein residues and ligand atoms as nodes and edges between each protein residue and the
+closest ligand atoms. We also build a fully connected ligand graph for each protein residue with its
+nearest neighbor ligand atoms as nodes; message passing between ligand atoms increases the richness of
+the information transferred to the protein through the ligand-protein edges. We obtained the best
+performance by selecting for the protein-ligand and individual residue intra-ligand graphs the 25 closest
+ligand atoms based on protein virtual Cβ and ligand atom distances (Figure S1A). The ligand graph nodes
+are initialized to one-hot encoded chemical element types, and the ligand graph edges to the distances
+between the atoms (Figure 1). The protein-ligand graph edges encode distances between N, Cα, C, O, and
+vvirtual Cβ atoms and ligand atoms (Figure 1). The protein-ligand encoder consisted of two message-passing
+blocks that updated the ligand graph representations and then updated the protein-ligand graph representations.
 """
 import argparse
 from dataclasses import dataclass
@@ -101,6 +112,7 @@ def compute_distance_rbfs(
     num_rbf: int = 16,
     D_min: float = 2.0,
     D_max: float = 22.0,
+    is_batched: bool = False,
 ):
     """Distance type for new graph determines distance used for constructing new graph instance,
     not for the computation of the RBFs, which are based on the current distance type.
@@ -114,7 +126,7 @@ def compute_distance_rbfs(
     spaced_mus = spaced_mus[None, None, :]
     dists = distance_matrix[..., None]
     rbfs = np.exp(-(((dists - spaced_mus) / sigma) ** 2))
-    if distance_matrix.ndim == 3:
+    if distance_matrix.ndim == 3 and not is_batched:
         L, _, num_dists = distance_matrix.shape
         rbfs = np.reshape(
             rbfs, [L, L, num_dists * num_rbf]
@@ -171,28 +183,72 @@ def make_protein_features(
     }
 
 
-def make_ligand_features(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
-    # TODO: implement
-    return None
-
-
 def make_protein_ligand_features(
-    protein_complex: ProteinComplex,
-    ligand_complex: BiomoleculeComplex,
+    complex: BiomoleculeComplex,
     cfg: ProteinMPNNConfig,
 ):
-    # thing about ligandmpnn is it's really a multigraph
-    # TODO: implement
-    return None
+    """For the atomic context input features, we used one-hot encoded chemical element types as node features
+    for the ligand graph and the radial basis function encoded distances between the context atoms as edges
+    for the ligand graph. To encode the interaction between protein-context atoms we used distances between
+    N, Cα, C, O, and virtual Cβ atoms and context atoms. In addition, we added angle-based sin/cos features
+    describing context atoms in the frame of N-Cα-C atoms.
+    """
+    ligand_mask = complex.atoms.hetero
+    protein_chain_ids = [
+        chain_id
+        for chain_id, chain in complex.chains
+        if isinstance(chain, ProteinMixin)
+    ]
+    protein_mask = np.isin(complex.atoms.chain_id, protein_chain_ids)
+    ca_distances = complex.atom_distances(
+        mask_from=protein_mask, mask_to=ligand_mask, atoms_from=["CA"], atoms_to=None
+    )  # num residues, num ligand atoms
+    num_ligand_atoms = ligand_mask.sum()
+    _, topk_indices = numpy_topk(
+        ca_distances,
+        k=min(cfg.num_ligand_neighbours, num_ligand_atoms),
+        axis=-1,
+        largest=False,
+        sorted=True,
+    )
+    distances = complex.atom_distances(
+        mask_from=protein_mask,
+        mask_to=ligand_mask,
+        atoms_from=["N", "CA", "C", "O"],
+        atoms_to=None,
+    )  # num residues, num ligand atoms, 4
+    distances = batched_gather(distances, topk_indices, 1)
+    ligand_coords = (
+        complex[ligand_mask]
+        .atoms.coords[topk_indices.reshape(-1)]
+        .reshape(topk_indices.shape)
+    )  # num res, k, 3
+    ligand_distances = np.sqrt(
+        np.sum((ligand_coords[:, None] - ligand_coords[:, :, None]) ** 2, -1)
+    )  # num res, k, k
+    # TODO: double-check that ligand elements correspond to distances
+    return {
+        "protein_ligand_rbfs": compute_distance_rbfs(distances, cfg.num_rbf),
+        "ligand_elements": complex.atoms[ligand_mask]
+        .element[topk_indices.reshape(-1)]
+        .reshape(topk_indices.shape),
+        "ligand_rbfs": compute_distance_rbfs(
+            ligand_distances, cfg.num_rbf, is_batched=True
+        ),
+    }
 
 
-def proteinmpnn_transforms(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
+def make_proteinmpnn_features(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
     # this drops any ligand chains automatically
     return make_protein_features(complex, cfg)
 
 
-def ligandmpnn_transforms(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
-    raise NotImplementedError()
+def make_ligandmpnn_features(complex: BiomoleculeComplex, cfg: ProteinMPNNConfig):
+    protein_features = make_protein_features(complex, cfg)
+    protein_ligand_features = make_protein_ligand_features(complex, cfg)
+    features = {f"protein_{k}": v for k, v in protein_features.items()}
+    features.update(protein_ligand_features)
+    return features
 
 
 def pack_edges(
@@ -332,6 +388,57 @@ class ProteinMPNNNodeUpdate(nn.Module):
         return node_h
 
 
+class ProteinLigandMPNNNodeUpdate(nn.Module):
+    """Analogy to cross- rather than self- attention"""
+
+    def __init__(
+        self,
+        input_dim: int,
+        embed_dim: int,
+        mlp_hidden_dim: int,
+        mlp_num_layers: int,
+        dropout: float = 0.1,
+        aggregation_scale: float = 30.0,
+    ):
+        super().__init__()
+        self.aggregation_scale = aggregation_scale
+        self.message_mlp = MLP(
+            in_features=input_dim,
+            hidden_features=mlp_hidden_dim,
+            out_features=embed_dim,
+            num_layers=mlp_num_layers,
+        )
+        self.update_linear = nn.Linear(embed_dim, embed_dim)
+        self.layer_norm = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(
+        self,
+        node_h: torch.Tensor,
+        edge_h: torch.Tensor,
+        edge_index: torch.LongTensor,
+        update_indices: Optional[torch.Tensor] = None,
+        message_mask: Optional[torch.Tensor] = None,
+    ):
+        if update_indices is None:
+            update_indices = torch.arange(node_h.shape[1])
+        else:
+            assert update_indices.ndim == 1
+
+        edge_packed = pack_edges(node_h, edge_h, edge_index)[:, update_indices]
+        messages = self.message_mlp(edge_packed).sum(-2) / self.aggregation_scale
+        if message_mask is not None:
+            messages = messages * message_mask[:, :, None].float()
+        updated_nodes = self.layer_norm(
+            node_h[:, update_indices] + self.dropout(messages)
+        )
+        node_updates = self.update_linear(updated_nodes)
+        node_h[:, update_indices] = self.layer_norm(
+            node_h[:, update_indices] + self.dropout(node_updates)
+        )
+        return node_h
+
+
 class ProteinMPNNEdgeUpdate(nn.Module):
     def __init__(
         self,
@@ -409,6 +516,69 @@ class ProteinMPNNEncoderLayer(nn.Module):
         node_h = node_h * node_mask[:, :, None].float()
         edge_h = self.edge_update(node_h, edge_h, edge_index)
         return node_h, edge_h
+
+
+class LigandMPNNEncoderLayer(nn.Module):
+    """Ligand MPNN injects ligand info after a stack of protein mpnn layers.
+
+    The protein-ligand encoder consisted of two message-passing
+    blocks that updated the ligand graph representations and then updated the protein-ligand graph representations.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        embed_dim: int,
+        mlp_hidden_dim: int,
+        mlp_num_layers: int,
+        dropout: float = 0.1,
+        aggregation_scale: float = 30.0,
+    ):
+        self.ligand_node_update = ProteinMPNNNodeUpdate(
+            input_dim=input_dim,
+            embed_dim=embed_dim,
+            mlp_hidden_dim=mlp_hidden_dim,
+            mlp_num_layers=mlp_num_layers,
+            dropout=dropout,
+            aggregation_scale=aggregation_scale,
+        )
+        self.protein_ligand_node_update = ProteinLigandMPNNNodeUpdate(
+            input_dim=input_dim,
+            embed_dim=embed_dim,
+            mlp_hidden_dim=mlp_hidden_dim,
+            mlp_num_layers=mlp_num_layers,
+            dropout=dropout,
+            aggregation_scale=aggregation_scale,
+        )
+
+    def forward(
+        self,
+        ligand_node_h: torch.Tensor,
+        ligand_edge_h: torch.Tensor,
+        ligand_edge_index: torch.Tensor,
+        protein_node_h: torch.Tensor,
+        protein_ligand_edge_h: torch.Tensor,
+        protein_ligand_edge_index: torch.Tensor,
+        ligand_node_mask: Optional[torch.Tensor] = None,
+        ligand_message_mask: Optional[torch.Tensor] = None,
+    ):
+        assert ligand_node_h.ndim == 3  # bsz, num_nodes, embed_dim
+        assert ligand_edge_h.ndim == 4  # bsz, num_nodes, num_nodes, embed_dim
+        if ligand_node_mask is not None:
+            raise NotImplementedError()
+        if ligand_message_mask is not None:
+            raise NotImplementedError()
+        ligand_node_h = self.ligand_node_update(
+            ligand_node_h, ligand_edge_h, ligand_edge_index
+        )
+        ligand_node_h = ligand_node_h * ligand_node_mask[:, :, None].float()
+        protein_node_h = self.protein_ligand_node_update(
+            protein_node_h,
+            ligand_node_h,
+            protein_ligand_edge_h,
+            protein_ligand_edge_index,
+        )
+        return protein_node_h
 
 
 class ProteinMPNNDecoderLayer(nn.Module):
@@ -688,26 +858,26 @@ def main(args):
     )
     val_dataset = load_dataset(args.repo_id, name=args.config_name, split="val")
     if args.model_type == "protein_mpnn":
-        transforms = proteinmpnn_transforms
+        featuriser = make_proteinmpnn_features
     elif args.model_type == "ligand_mpnn":
-        transforms = ligandmpnn_transforms
+        featuriser = make_ligandmpnn_features
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
 
     # pass split name for metrics - is there a better way?
     train_loader = torch.utils.data.DataLoader(
-        train_dataset.map(transforms, fn_kwargs={"cfg": cfg}),
+        train_dataset.map(featuriser, fn_kwargs={"cfg": cfg}),
         batch_size=16,
     )
     # TODO: add epoch end shuffling.
     val_loader = torch.utils.data.DataLoader(
-        val_dataset.map(transforms, fn_kwargs={"cfg": cfg}),
+        val_dataset.map(featuriser, fn_kwargs={"cfg": cfg}),
         batch_size=16,
     )
     test_loaders = [
         torch.utils.data.DataLoader(
             load_dataset(args.repo_id, name=args.config_name, split=split).map(
-                transforms, fn_kwargs={"cfg": cfg}
+                featuriser, fn_kwargs={"cfg": cfg}
             ),
             batch_size=16,
         )
