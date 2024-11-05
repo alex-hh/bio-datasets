@@ -18,65 +18,54 @@ def get_atom_elements():
 ALL_ELEMENT_TYPES = get_atom_elements()
 
 
+# c.f. docstring of biotite.structure.filter.filter_amino_acids
 PROTEIN_TYPES = [
     "D-PEPTIDE LINKING",
     "D-PEPTIDE NH3 AMINO TERMINUS",
-    "D-beta-peptide, C-gamma linking",
-    "D-gamma-peptide, C-delta linking",
-    "D-peptide NH3 amino terminus",
-    "D-peptide linking",
-    "D-saccharide, beta linking",
+    "D-BETA-PEPTIDE, C-GAMMA LINKING",
+    "D-GAMMA-PEPTIDE, C-DELTA LINKING",
     "L-PEPTIDE COOH CARBOXY TERMINUS",
     "L-PEPTIDE LINKING",
-    "L-beta-peptide, C-gamma linking",
-    "L-gamma-peptide, C-delta linking",
-    "L-peptide COOH carboxy terminus",
-    "L-peptide NH3 amino terminus",
-    "L-peptide linking",
+    "L-BETA-PEPTIDE, C-GAMMA LINKING",
+    "L-GAMMA-PEPTIDE, C-DELTA LINKING",
+    "L-PEPTIDE COOH CARBOXY TERMINUS",
+    "L-PEPTIDE NH3 AMINO TERMINUS",
+    "L-PEPTIDE LINKING",
     "PEPTIDE LINKING",
-    "PEPTIDE-LIKE",
-    "Peptide-like",
-    "peptide linking",
-    "peptide-like",
 ]
 
 
+# c.f. docstring of biotite.structure.filter.filter_nucleotides
 DNA_TYPES = [
     "DNA LINKING",
     "DNA OH 3 PRIME TERMINUS",
-    "DNA OH 3 prime terminus",
-    "DNA OH 5 prime terminus",
-    "DNA linking",
+    "DNA OH 5 PRIME TERMINUS",
     "L-DNA LINKING",
-    "L-DNA linking",
 ]
 
 
+# c.f. docstring of biotite.structure.filter.filter_nucleotides
 RNA_TYPES = [
-    "L-RNA LINKING",
-    "L-RNA linking",
     "RNA LINKING",
-    "RNA OH 3 prime terminus",
-    "RNA OH 5 prime terminus",
-    "RNA linking",
+    "RNA OH 3 PRIME TERMINUS",
+    "RNA OH 5 PRIME TERMINUS",
+    "L-RNA LINKING",
 ]
 
 
-SACCHARIDE_TYPES = [
+# c.f. docstring of biotite.structure.filter.filter_carbohydrates
+CARBOHYDRATE_TYPES = [
     "D-SACCHARIDE",
-    "D-saccharide",
-    "D-saccharide, alpha linking",
-    "D-saccharide, beta linking",
+    "D-SACCHARIDE, ALPHA LINKING",
+    "D-SACCHARIDE, BETA LINKING",
     "L-SACCHARIDE",
-    "L-saccharide",
-    "L-saccharide, alpha linking",
-    "L-saccharide, beta linking",
-    "saccharide",
+    "L-SACCHARIDE, ALPHA LINKING",
+    "L-SACCHARIDE, BETA LINKING",
     "SACCHARIDE",
 ]
 
 
-CHEMICAL_TYPES = ["NON-POLYMER", "non-polymer", "other"]
+CHEMICAL_TYPES = ["NON-POLYMER", "OTHER", "PEPTIDE-LIKE"]
 
 
 def get_component_types():
@@ -93,13 +82,14 @@ CHEM_COMPONENT_TYPES = get_component_types()
 def get_component_categories():
     categories = {}
     for name, chem_type in CHEM_COMPONENT_TYPES.items():
+        chem_type = chem_type.strip().upper()
         if chem_type in PROTEIN_TYPES:
             categories[name] = "protein"
         elif chem_type in DNA_TYPES:
             categories[name] = "dna"
         elif chem_type in RNA_TYPES:
             categories[name] = "rna"
-        elif chem_type in SACCHARIDE_TYPES:
+        elif chem_type in CARBOHYDRATE_TYPES:
             categories[name] = "saccharide"
         elif chem_type in CHEMICAL_TYPES:
             categories[name] = "chemical"
@@ -160,18 +150,18 @@ class ResidueDictionary:
         category: Optional[str] = None,
         keep_hydrogens: bool = False,
     ):
-        assert category in [
-            "protein",
-            "dna",
-            "rna",
-            "saccharide",
-            "chemical",
-        ], f"Unknown category: {category}"
         ccd_data = get_ccd()
         res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
         if residue_names is not None:
             res_names = [res for res in res_names if res in residue_names]
         if category is not None:
+            assert category in [
+                "protein",
+                "dna",
+                "rna",
+                "saccharide",
+                "chemical",
+            ], f"Unknown category: {category}"
             mask = np.array(
                 [CHEM_COMPONENT_CATEGORIES[name] == category for name in res_names]
             )

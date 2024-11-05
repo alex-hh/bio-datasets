@@ -1,36 +1,36 @@
 import copy
 from dataclasses import field
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 from biotite import structure as bs
 
 from bio_datasets.structure.residue import ResidueDictionary
-from .nucleic import rna_nucleotides, residue_atoms, residue_elements, NucleotideChain
 
+from .nucleic import NucleotideChain, residue_atoms, residue_elements, rna_nucleotides
 
 rna_residue_atoms = {res: residue_atoms[res] for res in rna_nucleotides}
 rna_residue_elements = {res: residue_elements[res] for res in rna_nucleotides}
 # biotite excludes some less central atoms
 backbone_atoms = [
-  'OP3',
-  'P',
-  'OP1',
-  'OP2',
-  "O5'",
-  "C5'",
-  "C4'",
-  "O4'",
-  "C3'",
-  "O3'",
-  "C2'",
-  "O2'",
-  "C1'",
+    "OP3",
+    "P",
+    "OP1",
+    "OP2",
+    "O5'",
+    "C5'",
+    "C4'",
+    "O4'",
+    "C3'",
+    "O3'",
+    "C2'",
+    "O2'",
+    "C1'",
 ]
 
 
 class RNADictionary(ResidueDictionary):
-    
+
     """Defaults configure a dictionary with just the 4 standard bases"""
 
     # TODO: these are actually all constants
