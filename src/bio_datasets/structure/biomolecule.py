@@ -6,6 +6,7 @@ from biotite import structure as bs
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 
+from bio_datasets.io import load_structure
 from bio_datasets.np_utils import map_categories_to_indices
 
 from .residue import ResidueDictionary, get_residue_starts_mask
@@ -144,17 +145,23 @@ class Biomolecule(Molecule):
         verbose: bool = False,
         backbone_only: bool = False,
         drop_hydrogens: bool = True,
-        raise_error_on_unexpected_residue: bool = False,
+        raise_error_on_unexpected: bool = False,
+        replace_unexpected_with_unknown: bool = False,
     ):
         self.residue_dictionary = residue_dictionary
         self.backbone_only = backbone_only
-        self.raise_error_on_unexpected_residue = raise_error_on_unexpected_residue
+        self.raise_error_on_unexpected = raise_error_on_unexpected
+        self.replace_unexpected_with_unknown = replace_unexpected_with_unknown
         self.drop_hydrogens = drop_hydrogens
-        atoms = self.convert_residues(atoms, self.residue_dictionary)
+        atoms = self.convert_residues(
+            atoms,
+            self.residue_dictionary,
+            replace_unexpected_with_unknown=self.replace_unexpected_with_unknown,
+        )
         atoms = self.filter_atoms(
             atoms,
             self.residue_dictionary,
-            raise_error_on_unexpected=self.raise_error_on_unexpected_residue,
+            raise_error_on_unexpected=self.raise_error_on_unexpected,
         )  # e.g. check for standard residues.
         self.atoms = self.standardise_atoms(
             atoms,
@@ -165,12 +172,31 @@ class Biomolecule(Molecule):
         )
         self._standardised = True
 
+    @classmethod
+    def from_file(
+        cls,
+        file_path,
+        format: str = "pdb",
+        extra_fields: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        if residue_dictionary is None:
+            residue_dictionary = ResidueDictionary.from_ccd()  # TODO: better default?
+        atoms = load_structure(file_path, format=format, extra_fields=extra_fields)
+        return cls(atoms, residue_dictionary, **kwargs)
+
     @property
     def is_standardised(self):
         return self._standardised
 
     @staticmethod
-    def convert_residues(atoms: bs.AtomArray, residue_dictionary: ResidueDictionary):
+    def convert_residues(
+        atoms: bs.AtomArray,
+        residue_dictionary: ResidueDictionary,
+        replace_unexpected_with_unknown: bool = False,
+    ):
+        if replace_unexpected_with_unknown:
+            raise NotImplementedError("Not implemented")
         for conversion_dict in residue_dictionary.conversions or []:
             atom_swaps = conversion_dict["atom_swaps"]
             from_mask = (atoms.res_name == conversion_dict["residue"]).astype(bool)

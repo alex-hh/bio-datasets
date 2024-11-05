@@ -8,7 +8,6 @@ import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from io import BytesIO, StringIO
-from os import PathLike
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -16,8 +15,6 @@ import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure import get_chains
 from biotite.structure.filter import filter_amino_acids
-from biotite.structure.io.pdb import PDBFile
-from biotite.structure.io.pdbx import CIFFile
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
@@ -27,6 +24,7 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
+from bio_datasets.io import load_structure
 from bio_datasets.structure import (
     Biomolecule,
     ProteinChain,
@@ -43,21 +41,7 @@ from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts
 if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
 
-if bio_config.FASTPDB_AVAILABLE:
-    import fastpdb
-
 from .features import CustomFeature, register_bio_feature
-
-FILE_TYPE_TO_EXT = {
-    "pdb": "pdb",
-    "PDB": "pdb",
-    "CIF": "cif",
-    "cif": "cif",
-    "FCZ": "fcz",
-    "fcz": "fcz",
-    "foldcomp": "fcz",
-}
-
 
 extra_annots = [
     "b_factor",
@@ -94,66 +78,6 @@ def infer_bytes_format(b: bytes) -> str:
     else:
         # otherwise, assume pdb for now
         return "pdb"
-
-
-def load_structure(
-    fpath_or_handler,
-    format="pdb",
-    model: int = 1,
-    extra_fields=None,
-):
-    """
-    TODO: support foldcomp format, binary cif format
-    TODO: support model choice / multiple models (multiple conformations)
-    Args:
-        fpath: filepath to either pdb or cif file
-        chain: the chain id or list of chain ids to load
-    Returns:
-        biotite.structure.AtomArray
-    """
-    format = FILE_TYPE_TO_EXT[format]
-    if isinstance(fpath_or_handler, str) and fpath_or_handler.endswith(".gz"):
-        with gzip.open(fpath_or_handler, "rt") as f:
-            fpath_or_handler = StringIO(f.read())
-    if format == "cif":
-        pdbxf = CIFFile.read(fpath_or_handler)
-        structure = pdbxf.get_structure(
-            model=model,
-            extra_fields=extra_fields,
-        )
-    elif format == "pdb":
-        if bio_config.FASTPDB_AVAILABLE:
-            pdbf = fastpdb.PDBFile.read(fpath_or_handler)
-        else:
-            pdbf = PDBFile.read(fpath_or_handler)
-        structure = pdbf.get_structure(
-            model=model,
-            extra_fields=extra_fields,
-        )
-    elif format == "fcz":
-        if not bio_config.FOLDCOMP_AVAILABLE:
-            raise ImportError(
-                "Foldcomp is not installed. Please install it with `pip install foldcomp`"
-            )
-        import foldcomp
-
-        if is_open_compatible(fpath_or_handler):
-            with open(fpath_or_handler, "rb") as fcz:
-                fcz_binary = fcz.read()
-        else:
-            raise ValueError(f"Unsupported file type: expected path or bytes handler")
-        (_, pdb_str) = foldcomp.decompress(fcz_binary)
-        lines = pdb_str.splitlines()
-        pdbf = PDBFile()
-        pdbf.lines = lines
-        structure = pdbf.get_structure(
-            model=model,
-            extra_fields=extra_fields,
-        )
-    else:
-        raise ValueError(f"Unsupported file format: {format}")
-
-    return structure
 
 
 def protein_atom_array_from_dict(
@@ -216,10 +140,6 @@ def encode_biotite_atom_array(
         return foldcomp.compress(name, contents)
     else:
         return contents.encode()
-
-
-def is_open_compatible(file):
-    return isinstance(file, (str, PathLike))
 
 
 def infer_type_from_structure_file_dict(d: dict) -> Tuple[Optional[str], Optional[str]]:

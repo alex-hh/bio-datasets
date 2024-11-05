@@ -16,6 +16,11 @@ def get_atom_elements():
 
 
 ALL_ELEMENT_TYPES = get_atom_elements()
+_PRESET_RESIDUE_DICTIONARY_KWARGS = {}  # kwargs to pass to ResidueDictionary.from_ccd
+
+
+def register_preset_res_dict(preset_name: str, **kwargs):
+    _PRESET_RESIDUE_DICTIONARY_KWARGS[preset_name] = kwargs
 
 
 # c.f. docstring of biotite.structure.filter.filter_amino_acids
@@ -223,6 +228,12 @@ class ResidueDictionary:
             conversions=conversions,
         )
 
+    @classmethod
+    def from_preset(cls, preset_name: str, **extra_kwargs):
+        return cls.from_ccd(
+            **_PRESET_RESIDUE_DICTIONARY_KWARGS[preset_name], **extra_kwargs
+        )
+
     def __str__(self):
         return f"ResidueDictionary ({len(self.residue_names)} residue types"
 
@@ -316,8 +327,7 @@ class ResidueDictionary:
 
     def atomtype_index_full_to_short(self):
         # return a num_residues, num_full, num_short mapping array (e.g. atom37 -> atom14 for each residue)
-        # raise NotImplementedError()
-        return np.stack()
+        raise NotImplementedError()
 
     def resname_to_onehot(self, resname: np.ndarray) -> np.ndarray:
         masks = [resname == r for r in self.residue_names]

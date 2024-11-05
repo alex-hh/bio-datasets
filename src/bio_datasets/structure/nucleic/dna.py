@@ -1,11 +1,8 @@
-import copy
-from dataclasses import field
-from typing import Dict, List, Optional
+from typing import Optional
 
-import numpy as np
 from biotite import structure as bs
 
-from bio_datasets.structure.residue import ResidueDictionary
+from bio_datasets.structure.residue import ResidueDictionary, register_preset_res_dict
 
 from .nucleic import NucleotideChain, dna_nucleotides, residue_atoms, residue_elements
 
@@ -28,6 +25,11 @@ backbone_atoms = [
 ]
 
 
+register_preset_res_dict(
+    "dna", residue_names=dna_nucleotides, backbone_atoms=backbone_atoms
+)
+
+# TODO: add DNAMixin if we want to add more dna specific functionality
 class DNAChain(NucleotideChain):
     def __init__(
         self,
@@ -38,11 +40,11 @@ class DNAChain(NucleotideChain):
         drop_hydrogens: bool = True,
         map_nonstandard_nucleotides: bool = False,
         nonstandard_as_lowercase: bool = False,
+        raise_error_on_unexpected: bool = False,
+        replace_unexpected_with_unknown: bool = False,
     ):
         if residue_dictionary is None:
-            residue_dictionary = ResidueDictionary.from_ccd(
-                residue_names=dna_nucleotides, backbone_atoms=backbone_atoms
-            )
+            residue_dictionary = ResidueDictionary.from_preset("dna")
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,
@@ -51,4 +53,6 @@ class DNAChain(NucleotideChain):
             drop_hydrogens=drop_hydrogens,
             map_nonstandard_nucleotides=map_nonstandard_nucleotides,
             nonstandard_as_lowercase=nonstandard_as_lowercase,
+            raise_error_on_unexpected=raise_error_on_unexpected,
+            replace_unexpected_with_unknown=replace_unexpected_with_unknown,
         )

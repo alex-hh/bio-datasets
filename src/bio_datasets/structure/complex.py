@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from biotite import structure as bs
@@ -17,10 +17,15 @@ class BiomoleculeComplex(Biomolecule):
 
     @classmethod
     def from_atoms(
-        cls, atoms: bs.AtomArray, residue_dictionary: Optional[ResidueDictionary] = None
+        cls,
+        atoms: bs.AtomArray,
+        residue_dictionary: Optional[ResidueDictionary] = None,
+        res_dict_presets: Optional[Dict[str, str]] = None,
     ):
+        """N.B. default residue dictionaries exclude non-canonical residues."""
         # TODO: check chain-based stuff works with pdb files as well as cif files - are chain ids null sometimes for hetatms?
         chains = []
+        res_dict_presets = res_dict_presets or {}
         chain_categories = [
             CHEM_COMPONENT_CATEGORIES[r]
             for r in atoms.res_name[atoms.chain_id == chain_id]
@@ -30,7 +35,7 @@ class BiomoleculeComplex(Biomolecule):
             if category == "protein":
                 return ProteinComplex.from_atoms(
                     atoms,
-                    residue_dictionary=ProteinDictionary.from_ccd()
+                    residue_dictionary=ProteinDictionary()
                     if residue_dictionary is None
                     else residue_dictionary,
                 )
@@ -61,7 +66,9 @@ class BiomoleculeComplex(Biomolecule):
                 chains.append(
                     ProteinChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=ProteinDictionary.from_ccd()
+                        residue_dictionary=ProteinDictionary.from_preset(
+                            res_dict_presets.get("protein", "protein")
+                        )
                         if residue_dictionary is None
                         else residue_dictionary,
                     )
@@ -70,7 +77,9 @@ class BiomoleculeComplex(Biomolecule):
                 chains.append(
                     DNAChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=DNADictionary.from_ccd()
+                        residue_dictionary=ResidueDictionary.from_preset(
+                            res_dict_presets.get("dna", "dna")
+                        )
                         if residue_dictionary is None
                         else residue_dictionary,
                     )
@@ -79,7 +88,9 @@ class BiomoleculeComplex(Biomolecule):
                 chains.append(
                     RNAChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=RNADictionary.from_ccd()
+                        residue_dictionary=ResidueDictionary.from_preset(
+                            res_dict_presets.get("rna", "rna")
+                        )
                         if residue_dictionary is None
                         else residue_dictionary,
                     )

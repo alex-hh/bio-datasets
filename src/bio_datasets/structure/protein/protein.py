@@ -13,44 +13,33 @@ import numpy as np
 
 from bio_datasets.structure.biomolecule import Biomolecule, BiomoleculeChain
 from bio_datasets.structure.protein import constants as protein_constants
-from bio_datasets.structure.residue import ResidueDictionary
+from bio_datasets.structure.residue import ResidueDictionary, register_preset_res_dict
 
 from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
 
-# from biotite.structure.filter import filter_amino_acids  includes non-standard
-
-
 # TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary (atom14_coords)
+
+
+register_preset_res_dict(
+    "protein",
+    residue_names=copy.deepcopy(protein_constants.resnames),
+    residue_types=copy.deepcopy(protein_constants.restypes_with_x),
+    atom_types=copy.deepcopy(protein_constants.atom_types),
+    residue_atoms=copy.deepcopy(protein_constants.residue_atoms),
+    residue_elements=copy.deepcopy(protein_constants.residue_elements),
+    backbone_atoms=["N", "CA", "C", "O"],
+    unknown_residue_name="UNK",
+    conversions=[
+        {"residue": "MSE", "to_residue": "MET", "atom_swaps": [("SE", "SD")]},
+        {"residue": "SEC", "to_residue": "CYS", "atom_swaps": [("SE", "SG")]},
+    ],
+)
 
 
 @dataclass
 class ProteinDictionary(ResidueDictionary):
     """Defaults configure a dictionary with just the 20 standard amino acids"""
 
-    # TODO: these are actually all constants
-    residue_names: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.resnames)
-    )
-    residue_types: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.restypes_with_x)
-    )
-    atom_types: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.atom_types)
-    )
-    residue_atoms: Dict[str, List[str]] = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.residue_atoms)
-    )
-    residue_elements: Dict[str, List[str]] = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.residue_elements)
-    )
-    backbone_atoms: List[str] = field(default_factory=lambda: ["N", "CA", "C", "O"])
-    unknown_residue_name: str = field(default_factory=lambda: "UNK")
-    conversions: List[Dict[str, str]] = field(
-        default_factory=lambda: [
-            {"residue": "MSE", "to_residue": "MET", "atom_swaps": [("SE", "SD")]},
-            {"residue": "SEC", "to_residue": "CYS", "atom_swaps": [("SE", "SG")]},
-        ]
-    )
     drop_oxt: bool = False
 
     def _check_atom14_compatible(self):
@@ -259,6 +248,8 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         verbose: bool = False,
         backbone_only: bool = False,
         drop_hydrogens: bool = True,
+        replace_unexpected_with_unknown: bool = False,
+        raise_error_on_unexpected: bool = False,
     ):
         if residue_dictionary is None:
             residue_dictionary = ProteinDictionary()
@@ -268,6 +259,8 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
             verbose=verbose,
             backbone_only=backbone_only,
             drop_hydrogens=drop_hydrogens,
+            replace_unexpected_with_unknown=replace_unexpected_with_unknown,
+            raise_error_on_unexpected=raise_error_on_unexpected,
         )
 
     @property
