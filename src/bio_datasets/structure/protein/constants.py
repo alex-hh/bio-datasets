@@ -347,7 +347,7 @@ rigid_group_atom_positions = {
 }
 
 # Reordered atoms in standard order
-# order should be consistent with atom_types
+# order should be consistent with atom_types and CCD (TODO: check this)
 residue_atoms = {
     "ALA": ["N", "CA", "C", "O", "CB"],
     "ARG": ["N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"],

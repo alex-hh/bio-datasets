@@ -1,5 +1,5 @@
 import io
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from biotite import structure as bs
@@ -9,7 +9,11 @@ from biotite.structure.residues import get_residue_starts
 from bio_datasets.np_utils import map_categories_to_indices
 
 from .chemical.chemical import Molecule, T
-from .residue import ResidueDictionary, get_residue_starts_mask
+from .residue import (
+    CHEM_COMPONENT_CATEGORIES,
+    ResidueDictionary,
+    get_residue_starts_mask,
+)
 
 ALL_EXTRA_FIELDS = ["occupancy", "b_factor", "atom_id", "charge"]
 
@@ -485,54 +489,4 @@ class BiomoleculeChain(Biomolecule):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
-        )
-
-
-class BiomoleculeComplex(Biomolecule):
-    def __init__(self, chains: List[BiomoleculeChain]):
-        self._chain_ids = [mol.chain_id for mol in chains]
-        self._chains_lookup = {mol.chain_id: mol for mol in chains}
-
-    @property
-    def atoms(self):
-        return sum(
-            [prot.atoms for prot in self._proteins_lookup.values()],
-            bs.AtomArray(length=0),
-        )
-
-    def get_chain(self, chain_id: str) -> "BiomoleculeChain":
-        return self._chains_lookup[chain_id]
-
-    def interface(
-        self,
-        atom_names: Union[str, List[str]] = "CA",
-        chain_pair: Optional[Tuple[str, str]] = None,
-        threshold: float = 10.0,
-        nan_fill: Optional[Union[float, str]] = None,
-    ) -> T:
-        distances = self.interface_distances(
-            atom_names=atom_names, chain_pair=chain_pair, nan_fill=nan_fill
-        )
-        interface_mask = distances < threshold
-        return self.__class__.from_atoms(self.atoms[interface_mask])
-
-    def interface_distances(
-        self,
-        atom_names: Union[str, List[str]] = "CA",
-        chain_pair: Optional[Tuple[str, str]] = None,
-        nan_fill: Optional[Union[float, str]] = None,
-    ) -> np.ndarray:
-        if chain_pair is None:
-            if len(self._chain_ids) != 2:
-                raise ValueError(
-                    "chain_pair must be specified for non-binary complexes"
-                )
-            chain_pair = (self._chain_ids[0], self._chain_ids[1])
-        residue_mask_from = self.atoms.chain_id == chain_pair[0]
-        residue_mask_to = self.atoms.chain_id == chain_pair[1]
-        return self.distances(
-            atom_names=atom_names,
-            residue_mask_from=residue_mask_from,
-            residue_mask_to=residue_mask_to,
-            nan_fill=nan_fill,
         )

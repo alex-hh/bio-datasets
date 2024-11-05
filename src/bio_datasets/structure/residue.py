@@ -3,19 +3,128 @@ from typing import Dict, List, Optional
 
 import numpy as np
 from biotite import structure as bs
+from biotite.structure.info.ccd import get_ccd
+from biotite.structure.io.pdbx import get_component
 from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
 
 
+def get_atom_elements():
+    ccd_data = get_ccd()
+    return np.unique(ccd_data["chem_comp_atom"]["type_symbol"].as_array())
+
+
+ALL_ELEMENT_TYPES = get_atom_elements()
+
+
+PROTEIN_TYPES = [
+    "D-PEPTIDE LINKING",
+    "D-PEPTIDE NH3 AMINO TERMINUS",
+    "D-beta-peptide, C-gamma linking",
+    "D-gamma-peptide, C-delta linking",
+    "D-peptide NH3 amino terminus",
+    "D-peptide linking",
+    "D-saccharide, beta linking",
+    "L-PEPTIDE COOH CARBOXY TERMINUS",
+    "L-PEPTIDE LINKING",
+    "L-beta-peptide, C-gamma linking",
+    "L-gamma-peptide, C-delta linking",
+    "L-peptide COOH carboxy terminus",
+    "L-peptide NH3 amino terminus",
+    "L-peptide linking",
+    "PEPTIDE LINKING",
+    "PEPTIDE-LIKE",
+    "Peptide-like",
+    "peptide linking",
+    "peptide-like",
+]
+
+
+DNA_TYPES = [
+    "DNA LINKING",
+    "DNA OH 3 PRIME TERMINUS",
+    "DNA OH 3 prime terminus",
+    "DNA OH 5 prime terminus",
+    "DNA linking",
+    "L-DNA LINKING",
+    "L-DNA linking",
+]
+
+
+RNA_TYPES = [
+    "L-RNA LINKING",
+    "L-RNA linking",
+    "RNA LINKING",
+    "RNA OH 3 prime terminus",
+    "RNA OH 5 prime terminus",
+    "RNA linking",
+]
+
+
+SACCHARIDE_TYPES = [
+    "L-SACCHARIDE",
+    "L-saccharide",
+    "L-saccharide, alpha linking",
+    "L-saccharide, beta linking",
+    "saccharide",
+    "SACCHARIDE",
+]
+
+
+CHEMICAL_TYPES = ["NON-POLYMER", "non-polymer", "other"]
+
+
+def get_component_types():
+    ccd_data = get_ccd()
+    res_names = ccd_data["chem_comp"]["id"].as_array()
+    res_types = ccd_data["chem_comp"]["type"].as_array()
+    return {name: type for name, type in zip(res_names, res_types)}
+
+
+CHEM_COMPONENT_TYPES = get_component_types()
+
+
+def get_component_categories():
+    categories = {}
+    for name, chem_type in CHEM_COMPONENT_TYPES.items():
+        if chem_type in PROTEIN_TYPES:
+            categories[name] = "protein"
+        elif chem_type in DNA_TYPES:
+            categories[name] = "dna"
+        elif chem_type in RNA_TYPES:
+            categories[name] = "rna"
+        elif chem_type in SACCHARIDE_TYPES:
+            categories[name] = "saccharide"
+        elif chem_type in CHEMICAL_TYPES:
+            categories[name] = "chemical"
+        else:
+            raise ValueError(f"Unknown chemical component type: {chem_type}")
+    return categories
+
+
+def get_component_3to1():
+    ccd_data = get_ccd()
+    res_names = ccd_data["chem_comp"]["id"].as_array()
+    res_types = ccd_data["chem_comp"]["one_letter_code"].as_array()
+    return {name: code for name, code in zip(res_names, res_types) if code}
+
+
+CHEM_COMPONENT_CATEGORIES = get_component_categories()
+CHEM_COMPONENT_3TO1 = get_component_3to1()
+
+
 @dataclass
 class ResidueDictionary:
     residue_names: List[str]
-    residue_types: List[str]
-    atom_types: List[str]
     residue_atoms: Dict[str, List]  # defines composition and atom order
-    backbone_atoms: List[str]
+    residue_elements: Dict[str, List[str]]
     unknown_residue_name: str
+    # types define one-hot representations
+    residue_types: Optional[List[str]] = None  # one letter codes
+    element_types: Optional[List[str]] = None
+    atom_types: Optional[List[str]] = None
+    backbone_atoms: Optional[List[str]] = None
     conversions: Optional[List[Dict]] = None
 
     def __post_init__(self):
@@ -165,3 +274,56 @@ def get_residue_starts_mask(
     mask = np.zeros(len(atoms), dtype=bool)
     mask[residue_starts] = True
     return mask
+
+
+class ChemicalComponentDictionary:
+    """
+    Uses biotite's CCD.
+    TODO: decide whether to save CCD or just use user's biotite CCD.
+
+    N.B. most components don't have a one letter code.
+
+    What is appropriate unknown residue name?
+    """
+
+    @classmethod
+    def from_biotite_ccd(cls, category: str, keep_hydrogens: bool = False):
+        assert category in [
+            "protein",
+            "dna",
+            "rna",
+            "saccharide",
+            "chemical",
+        ], f"Unknown category: {category}"
+        ccd_data = get_ccd()
+        res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
+        mask = np.array(
+            [CHEM_COMPONENT_CATEGORIES[name] == category for name in res_names]
+        )
+        res_names = list(res_names[mask])
+        res_types = [CHEM_COMPONENT_3TO1[name] for name in res_names]
+        res_atom_names = {}
+        res_element_types = {}
+        for name in res_names:
+            atom_names = []
+            element_types = []
+            comp = get_component(ccd_data, name)
+            for at, elem in zip(comp.atom_name, comp.element_symbol):
+                if keep_hydrogens or (elem != "H" and elem != "D"):
+                    atom_names.append(at)
+                    element_types.append(elem)
+
+            res_atom_names[name] = atom_names
+            res_element_types[name] = element_types
+
+        return cls(
+            residue_names=res_names[mask],
+            residue_types=res_types[mask],
+            residue_atoms=res_atom_names,
+            residue_elements=res_element_types,
+            backbone_atoms=None,
+            unknown_residue_name="UNK",
+            element_types=ALL_ELEMENT_TYPES.copy(),
+            atom_types=None,
+            # atom_types=ALL_ATOM_TYPES.copy(),
+        )
