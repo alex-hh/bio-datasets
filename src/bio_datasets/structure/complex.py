@@ -1,31 +1,65 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 from biotite import structure as bs
 
-from .biomolecule import Biomolecule, BiomoleculeChain, T
+from .biomolecule import BaseBiomoleculeComplex, BiomoleculeChain, T
 from .chemical import SmallMolecule
-from .nucleic import DNAChain, DNADictionary, RNAChain, RNADictionary
+from .nucleic import DNAChain, RNAChain
 from .protein import ProteinChain, ProteinComplex, ProteinDictionary
 from .residue import CHEM_COMPONENT_CATEGORIES, ResidueDictionary
 
 
-class BiomoleculeComplex(Biomolecule):
-    def __init__(self, chains: List[BiomoleculeChain]):
-        self._chain_ids = [mol.chain_id for mol in chains]
-        self._chains_lookup = {mol.chain_id: mol for mol in chains}
+class BiomoleculeComplex(BaseBiomoleculeComplex):
+    """A collection of biomolecules, each represented by its own class type.
+
+    As well as providing access to molecule type-specific methods, this supports
+    use of different residue dictionaries for different molecule types.
+
+    To enable this, the `category_to_res_dict_preset_name` argument should be used to
+    specify the preset name of the residue dictionary to use for each chain category
+    (i.e. "protein", "dna", "rna"), or `use_canonical_presets` can be set to `True`
+    to use the canonical presets for protein, dna, and rna.
+    """
 
     @classmethod
     def from_atoms(
         cls,
         atoms: bs.AtomArray,
         residue_dictionary: Optional[ResidueDictionary] = None,
-        res_dict_presets: Optional[Dict[str, str]] = None,
+        category_to_res_dict_preset_name: Optional[Dict[str, str]] = None,
+        chain_mapping: Optional[Dict[str, Type[BiomoleculeChain]]] = None,
+        use_canonical_presets: bool = False,
     ):
         """N.B. default residue dictionaries exclude non-canonical residues."""
         # TODO: check chain-based stuff works with pdb files as well as cif files - are chain ids null sometimes for hetatms?
         chains = []
-        res_dict_presets = res_dict_presets or {}
+        if use_canonical_presets:
+            assert (
+                category_to_res_dict_preset_name is None
+            ), "Cannot specify both category_to_res_dict_preset_name and use_canonical_presets"
+            category_to_res_dict_preset_name = {
+                "protein": "protein",
+                "dna": "dna",
+                "rna": "rna",
+            }
+        if category_to_res_dict_preset_name is None:
+            chain_mapping = chain_mapping or {
+                "protein": BiomoleculeChain,
+                "dna": BiomoleculeChain,
+                "rna": BiomoleculeChain,
+                "chemical": BiomoleculeChain,
+            }
+            residue_dictionary = residue_dictionary or ResidueDictionary.from_ccd()
+
+        else:
+            chain_mapping = chain_mapping or {
+                "protein": ProteinChain,
+                "dna": DNAChain,
+                "rna": RNAChain,
+                "chemical": SmallMolecule,
+            }
+
         chain_categories = [
             CHEM_COMPONENT_CATEGORIES[r]
             for r in atoms.res_name[atoms.chain_id == chain_id]
@@ -33,9 +67,11 @@ class BiomoleculeComplex(Biomolecule):
         if len(set(chain_categories)) == 1:
             category = chain_categories[0]
             if category == "protein":
-                return ProteinComplex.from_atoms(
+                return chain_mapping["protein"].from_atoms(
                     atoms,
-                    residue_dictionary=ProteinDictionary()
+                    residue_dictionary=ProteinDictionary.from_preset(
+                        category_to_res_dict_preset_name["protein"]
+                    )
                     if residue_dictionary is None
                     else residue_dictionary,
                 )
@@ -64,10 +100,10 @@ class BiomoleculeComplex(Biomolecule):
                 )
             elif chain_category[0] == "protein":
                 chains.append(
-                    ProteinChain(
+                    chain_mapping["protein"].from_atoms(
                         atoms[atoms.chain_id == chain_id],
                         residue_dictionary=ProteinDictionary.from_preset(
-                            res_dict_presets.get("protein", "protein")
+                            category_to_res_dict_preset_name["protein"]
                         )
                         if residue_dictionary is None
                         else residue_dictionary,
@@ -75,10 +111,10 @@ class BiomoleculeComplex(Biomolecule):
                 )
             elif chain_category[0] == "dna":
                 chains.append(
-                    DNAChain(
+                    chain_mapping["dna"].from_atoms(
                         atoms[atoms.chain_id == chain_id],
                         residue_dictionary=ResidueDictionary.from_preset(
-                            res_dict_presets.get("dna", "dna")
+                            category_to_res_dict_preset_name["dna"]
                         )
                         if residue_dictionary is None
                         else residue_dictionary,
@@ -86,10 +122,10 @@ class BiomoleculeComplex(Biomolecule):
                 )
             elif chain_category[0] == "rna":
                 chains.append(
-                    RNAChain(
+                    chain_mapping["rna"].from_atoms(
                         atoms[atoms.chain_id == chain_id],
                         residue_dictionary=ResidueDictionary.from_preset(
-                            res_dict_presets.get("rna", "rna")
+                            category_to_res_dict_preset_name["rna"]
                         )
                         if residue_dictionary is None
                         else residue_dictionary,
@@ -97,7 +133,7 @@ class BiomoleculeComplex(Biomolecule):
                 )
             elif chain_category[0] == "chemical":
                 chains.append(
-                    SmallMolecule(
+                    chain_mapping["chemical"].from_atoms(
                         atoms[atoms.chain_id == chain_id],
                     )
                 )

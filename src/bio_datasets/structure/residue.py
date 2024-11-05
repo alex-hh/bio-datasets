@@ -12,7 +12,7 @@ from bio_datasets.np_utils import map_categories_to_indices
 
 def get_atom_elements():
     ccd_data = get_ccd()
-    return np.unique(ccd_data["chem_comp_atom"]["type_symbol"].as_array())
+    return list(np.unique(ccd_data["chem_comp_atom"]["type_symbol"].as_array()))
 
 
 ALL_ELEMENT_TYPES = get_atom_elements()
@@ -149,8 +149,12 @@ class ResidueDictionary:
         assert len(np.unique(self.residue_names)) == len(
             self.residue_names
         ), "Duplicate residue names"
+        # TODO: assert backbone_atoms are in correct order
         assert all([res in self.residue_atoms for res in self.residue_names])
         assert all([res in self.residue_elements for res in self.residue_names])
+        for res, ats in self.residue_atoms.items():
+            if len(ats) == 0:
+                print("Warning: zero atoms for residue", res)
         if self.conversions is not None:
             for conversion in self.conversions:
                 assert conversion["to_residue"] in self.residue_names
@@ -165,13 +169,18 @@ class ResidueDictionary:
         residue_names: Optional[List[str]] = None,
         category: Optional[str] = None,
         keep_hydrogens: bool = False,
+        keep_oxt: bool = False,  # keeping it will add an extra atom to each residue during standardisation
         backbone_atoms: Optional[List[str]] = None,
         atom_types: Optional[List[str]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
     ):
         ccd_data = get_ccd()
-        res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
+        res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array(str))
+        if not keep_hydrogens:
+            res_names = [
+                res for res in res_names if res != "H" and res != "D" and res != "D8U"
+            ]
         if residue_names is not None:
             res_names = [res for res in res_names if res in residue_names]
         if category is not None:
@@ -200,24 +209,29 @@ class ResidueDictionary:
 
         res_atom_names = {}
         res_element_types = {}
+        chem_comp_atom = ccd_data["chem_comp_atom"]
         for (
             name
         ) in (
             res_names
         ):  # TODO: is this an inefficient loop? We can just load the full table and filter as required...
-            atom_names = []
-            element_types = []
-            comp = get_component(ccd_data, res_name=name)
-            for at, elem in zip(comp.atom_name, comp.element):
-                if keep_hydrogens or (elem != "H" and elem != "D"):
-                    atom_names.append(at)
-                    element_types.append(elem)
+            res_mask = chem_comp_atom["comp_id"].as_array(str) == name
+            assert np.any(res_mask), f"No atoms found for residue {name}"
+            res_elements_arr = chem_comp_atom["type_symbol"].as_array(str)[res_mask]
+            res_atom_names_arr = chem_comp_atom["atom_id"].as_array(str)[res_mask]
+            assert len(res_elements_arr) == len(res_atom_names_arr)
 
-            res_atom_names[name] = atom_names
-            res_element_types[name] = element_types
+            mask = np.ones(len(res_atom_names_arr), dtype=bool)
+            if not keep_hydrogens:
+                mask &= (res_elements_arr != "H") & (res_elements_arr != "D")
+            if not keep_oxt:
+                mask &= res_atom_names_arr != "OXT"
+
+            res_atom_names[name] = list(res_atom_names_arr[mask])
+            res_element_types[name] = list(res_elements_arr[mask])
 
         return cls(
-            residue_names=res_names,
+            residue_names=list(res_names),
             residue_types=res_types,
             residue_atoms=res_atom_names,
             residue_elements=res_element_types,

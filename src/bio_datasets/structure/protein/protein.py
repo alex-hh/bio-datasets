@@ -11,7 +11,11 @@ from typing import Dict, List, Optional, Union
 import biotite.structure as bs
 import numpy as np
 
-from bio_datasets.structure.biomolecule import Biomolecule, BiomoleculeChain
+from bio_datasets.structure.biomolecule import (
+    BaseBiomoleculeComplex,
+    Biomolecule,
+    BiomoleculeChain,
+)
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import ResidueDictionary, register_preset_res_dict
 
@@ -232,10 +236,6 @@ class ProteinMixin:
         ] = self.atoms.coord
         return atom37_coords
 
-    def get_chain(self, chain_id: str):
-        chain_filter = self.atoms.chain_id == chain_id
-        return ProteinChain(self.atoms[chain_filter].copy())
-
 
 class ProteinChain(ProteinMixin, BiomoleculeChain):
 
@@ -268,12 +268,8 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         return self.atoms.chain_id[0]
 
 
-class ProteinComplex(ProteinMixin, Biomolecule):
+class ProteinComplex(ProteinMixin, BaseBiomoleculeComplex):
     """A protein complex."""
-
-    def __init__(self, proteins: List[ProteinChain]):
-        self._chain_ids = [prot.chain_id for prot in proteins]
-        self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
 
     @classmethod
     def from_atoms(cls, atoms: bs.AtomArray, **kwargs) -> "ProteinComplex":

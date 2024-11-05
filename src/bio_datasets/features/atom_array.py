@@ -24,7 +24,6 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.io import load_structure
 from bio_datasets.structure import (
     Biomolecule,
     ProteinChain,
@@ -34,6 +33,7 @@ from bio_datasets.structure import (
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
+from bio_datasets.structure.io import load_structure
 from bio_datasets.structure.protein import ProteinDictionary
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts_mask

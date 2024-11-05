@@ -30,7 +30,7 @@ register_preset_res_dict(
 )
 
 
-# TODO: add DNAMixin if we want to add more dna specific functionality
+# TODO: add RNAMixin if we want to add more dna specific functionality
 class RNAChain(NucleotideChain):
     def __init__(
         self,

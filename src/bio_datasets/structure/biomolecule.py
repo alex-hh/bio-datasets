@@ -6,8 +6,8 @@ from biotite import structure as bs
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 
-from bio_datasets.io import load_structure
 from bio_datasets.np_utils import map_categories_to_indices
+from bio_datasets.structure.io import load_structure
 
 from .residue import ResidueDictionary, get_residue_starts_mask
 
@@ -119,14 +119,7 @@ def create_complete_atom_array_from_restype_index(
         return new_atom_array, residue_starts, full_annot_names
 
 
-T = TypeVar("T", bound="Molecule")
-
-
-class Molecule(Generic[T]):
-    pass
-
-
-class Biomolecule(Molecule):
+class Biomolecule:
     """Base class for biomolecule objects.
 
     Biomolecules (DNA, RNA and Proteins) are chains of residues.
@@ -177,6 +170,7 @@ class Biomolecule(Molecule):
         cls,
         file_path,
         format: str = "pdb",
+        residue_dictionary: Optional[ResidueDictionary] = None,
         extra_fields: Optional[List[str]] = None,
         **kwargs,
     ):
@@ -437,6 +431,11 @@ class Biomolecule(Molecule):
         assert self.residue_dictionary.backbone_atoms is not None
         return np.isin(self.atoms.atom_name, self.residue_dictionary.backbone_atoms)
 
+    @property
+    def chains(self):
+        chain_ids = np.unique(self.atoms.chain_id)
+        return [self.get_chain(chain_id) for chain_id in chain_ids]
+
     def __len__(self):
         return self.num_residues  # n.b. -- not equal to len(self.atoms)
 
@@ -447,6 +446,7 @@ class Biomolecule(Molecule):
             return self.__class__(self.atoms[key])
 
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
+        # requires self.backbone_atoms to be in correct order
         assert all(
             [atom in self.backbone_atoms for atom in atom_names]
         ), f"Invalid entries in atom names: {atom_names}"
@@ -471,7 +471,22 @@ class Biomolecule(Molecule):
             ]
             return selected_coords
 
-    def distances(
+    def residue_all_atom_coords(self):
+        assert self.residue_dictionary.atom_types is not None
+        all_atom_coords = np.full(
+            (len(self.num_residues), len(self.residue_dictionary.atom_types), 3), np.nan
+        )
+        for ix, at in enumerate(self.residue_dictionary.atom_types):
+            # must be at most one atom per atom type per residue
+            at_mask = self.atoms.atom_name == at
+            residue_indices = self.atoms.residue_index[at_mask]
+            assert len(np.unique(residue_indices)) == len(
+                residue_indices
+            ), "Multiple atoms with same atom type in residue"
+            all_atom_coords[residue_indices, ix] = self.atoms.coord[at_mask]
+        return all_atom_coords
+
+    def residue_distances(
         self,
         atom_names: Union[str, List[str]],
         residue_mask_from: Optional[np.ndarray] = None,
@@ -514,14 +529,25 @@ class Biomolecule(Molecule):
                 )
         return dists
 
-    def contacts(self, atom_name: str, threshold: float) -> np.ndarray:
-        return self.distances(atom_name, nan_fill="max") < threshold
+    def residue_contacts(
+        self,
+        atom_names: Union[str, List[str]],
+        threshold: float,
+        multi_atom_calc_type: str = "min",
+    ) -> np.ndarray:
+        return (
+            self.residue_distances(
+                atom_names, nan_fill="max", multi_atom_calc_type=multi_atom_calc_type
+            )
+            < threshold
+        )
 
     def backbone(self) -> T:
         return self.__class__(self.atoms[self.backbone_mask])
 
-    def get_chain(self) -> "BiomoleculeChain":
-        raise NotImplementedError()
+    def get_chain(self, chain_id: str):
+        chain_filter = self.atoms.chain_id == chain_id
+        return self.__class__(self.atoms[chain_filter].copy())
 
 
 class BiomoleculeChain(Biomolecule):
@@ -540,4 +566,21 @@ class BiomoleculeChain(Biomolecule):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
+        )
+
+
+class BaseBiomoleculeComplex(Biomolecule):
+    def __init__(self, chains: List[BiomoleculeChain]):
+        self._chain_ids = [mol.chain_id for mol in chains]
+        self._chains_lookup = {mol.chain_id: mol for mol in chains}
+
+    @classmethod
+    def from_atoms(cls, atoms: bs.AtomArray, **kwargs) -> "BaseBiomoleculeComplex":
+        # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        chain_ids = sorted(np.unique(atoms.chain_id))
+        return cls(
+            [
+                BiomoleculeChain(atoms[atoms.chain_id == chain_id], **kwargs)
+                for chain_id in chain_ids
+            ]
         )
