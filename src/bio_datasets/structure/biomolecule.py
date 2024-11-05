@@ -1,5 +1,5 @@
 import io
-from typing import List, Optional, Tuple, Union
+from typing import Generic, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 from biotite import structure as bs
@@ -8,12 +8,10 @@ from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
 
-from .chemical.chemical import Molecule, T
-from .residue import (
-    CHEM_COMPONENT_CATEGORIES,
-    ResidueDictionary,
-    get_residue_starts_mask,
-)
+from .residue import ResidueDictionary, get_residue_starts_mask
+
+# from biotite.structure.filter import filter_highest_occupancy_altloc  performed automatically by biotite
+
 
 ALL_EXTRA_FIELDS = ["occupancy", "b_factor", "atom_id", "charge"]
 
@@ -120,6 +118,13 @@ def create_complete_atom_array_from_restype_index(
         return new_atom_array, residue_starts, full_annot_names
 
 
+T = TypeVar("T", bound="Molecule")
+
+
+class Molecule(Generic[T]):
+    pass
+
+
 class Biomolecule(Molecule):
     """Base class for biomolecule objects.
 
@@ -138,11 +143,13 @@ class Biomolecule(Molecule):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
+        drop_hydrogens: bool = True,
         raise_error_on_unexpected_residue: bool = False,
     ):
         self.residue_dictionary = residue_dictionary
         self.backbone_only = backbone_only
         self.raise_error_on_unexpected_residue = raise_error_on_unexpected_residue
+        self.drop_hydrogens = drop_hydrogens
         atoms = self.convert_residues(atoms, self.residue_dictionary)
         atoms = self.filter_atoms(
             atoms,
@@ -154,6 +161,7 @@ class Biomolecule(Molecule):
             residue_dictionary=self.residue_dictionary,
             verbose=verbose,
             backbone_only=self.backbone_only,
+            drop_hydrogens=self.drop_hydrogens,
         )
         self._standardised = True
 
@@ -193,11 +201,13 @@ class Biomolecule(Molecule):
         residue_dictionary,
         verbose: bool = False,
         backbone_only: bool = False,
+        drop_hydrogens: bool = True,
     ):
-        assert (
-            "element" in atoms._annot
-        ), "Elements must be present to exclude hydrogens"
-        atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        if drop_hydrogens:
+            assert (
+                "element" in atoms._annot
+            ), "Elements must be present to exclude hydrogens"
+            atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
         residue_starts = get_residue_starts(atoms)
         if (
             "atomtype_index" not in atoms._annot

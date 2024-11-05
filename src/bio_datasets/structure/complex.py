@@ -4,6 +4,8 @@ import numpy as np
 from biotite import structure as bs
 
 from .biomolecule import Biomolecule, BiomoleculeChain, T
+from .chemical import SmallMolecule
+from .nucleic import DNAChain, DNADictionary, RNAChain, RNADictionary
 from .protein import ProteinChain, ProteinComplex, ProteinDictionary
 from .residue import CHEM_COMPONENT_CATEGORIES, ResidueDictionary
 
@@ -64,13 +66,28 @@ class BiomoleculeComplex(Biomolecule):
                         else residue_dictionary,
                     )
                 )
-            elif chain_category[0] in ["dna", "rna", "saccharide", "chemical"]:
+            elif chain_category[0] == "dna":
                 chains.append(
-                    BiomoleculeChain(
+                    DNAChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=ResidueDictionary.from_ccd()
+                        residue_dictionary=DNADictionary.from_ccd()
                         if residue_dictionary is None
                         else residue_dictionary,
+                    )
+                )
+            elif chain_category[0] == "rna":
+                chains.append(
+                    RNAChain(
+                        atoms[atoms.chain_id == chain_id],
+                        residue_dictionary=RNADictionary.from_ccd()
+                        if residue_dictionary is None
+                        else residue_dictionary,
+                    )
+                )
+            elif chain_category[0] == "chemical":
+                chains.append(
+                    SmallMolecule(
+                        atoms[atoms.chain_id == chain_id],
                     )
                 )
             else:

@@ -133,8 +133,33 @@ class ResidueDictionary:
     backbone_atoms: Optional[List[str]] = None
     conversions: Optional[List[Dict]] = None
 
+    def __post_init__(self):
+        assert len(np.unique(self.residue_types)) == len(
+            self.residue_types
+        ), "Duplicate residue types"
+        if self.element_types is not None:
+            assert len(np.unique(self.element_types)) == len(
+                self.element_types
+            ), "Duplicate element types"
+        if self.atom_types is not None:
+            assert len(np.unique(self.atom_types)) == len(
+                self.atom_types
+            ), "Duplicate atom types"
+        if self.backbone_atoms is not None:
+            assert len(np.unique(self.backbone_atoms)) == len(
+                self.backbone_atoms
+            ), "Duplicate backbone atoms"
+        assert len(np.unique(self.residue_names)) == len(
+            self.residue_names
+        ), "Duplicate residue names"
+
     @classmethod
-    def from_ccd(cls, category: Optional[str] = None, keep_hydrogens: bool = False):
+    def from_ccd(
+        cls,
+        residue_names: Optional[List[str]] = None,
+        category: Optional[str] = None,
+        keep_hydrogens: bool = False,
+    ):
         assert category in [
             "protein",
             "dna",
@@ -144,15 +169,25 @@ class ResidueDictionary:
         ], f"Unknown category: {category}"
         ccd_data = get_ccd()
         res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array())
+        if residue_names is not None:
+            res_names = [res for res in res_names if res in residue_names]
         if category is not None:
             mask = np.array(
                 [CHEM_COMPONENT_CATEGORIES[name] == category for name in res_names]
             )
             res_names = list(res_names[mask])
+        # one-letter codes only used for unambiguous and complete residue dictionaries
         res_types = [CHEM_COMPONENT_3TO1[name] for name in res_names]
+        # TODO: check this covers all unknown cases
+        if not all([res_type and not res_type == "?" for res_type in res_types]):
+            res_types = None
         res_atom_names = {}
         res_element_types = {}
-        for name in res_names:
+        for (
+            name
+        ) in (
+            res_names
+        ):  # TODO: is this an inefficient loop? We can just load the full table and filter as required...
             atom_names = []
             element_types = []
             comp = get_component(ccd_data, res_name=name)
@@ -166,7 +201,7 @@ class ResidueDictionary:
 
         return cls(
             residue_names=res_names[mask],
-            residue_types=res_types[mask],
+            residue_types=res_types,
             residue_atoms=res_atom_names,
             residue_elements=res_element_types,
             backbone_atoms=None,
@@ -287,6 +322,9 @@ class ResidueDictionary:
     def restype_to_onehot(self, restype: np.ndarray) -> np.ndarray:
         masks = [restype == r for r in self.residue_types]
         return np.stack(masks, axis=-1)
+
+    def restype_to_resname(self, restype: np.ndarray) -> np.ndarray:
+        return np.array(self.residue_names)[self.restype_to_index(restype)]
 
     def decode_restype_index(self, restype_index: np.ndarray) -> np.ndarray:
         return "".join(np.array(self.residue_types)[restype_index])

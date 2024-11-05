@@ -119,10 +119,6 @@ class ProteinDictionary(ResidueDictionary):
         atom_names[oxt_mask] = "OXT"
         return atom_names
 
-    def restype_1to3(self, restype: str) -> str:
-        assert len(restype) == 1, "restype must be a single character"
-        return protein_constants.restype_1to3[restype]
-
 
 def filter_backbone(array, residue_dictionary):
     """
@@ -262,6 +258,7 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         residue_dictionary: Optional[ResidueDictionary] = None,
         verbose: bool = False,
         backbone_only: bool = False,
+        drop_hydrogens: bool = True,
     ):
         if residue_dictionary is None:
             residue_dictionary = ProteinDictionary()
@@ -270,6 +267,7 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
+            drop_hydrogens=drop_hydrogens,
         )
 
     @property
@@ -285,9 +283,12 @@ class ProteinComplex(ProteinMixin, Biomolecule):
         self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
 
     @classmethod
-    def from_atoms(cls, atoms: bs.AtomArray) -> "ProteinComplex":
+    def from_atoms(cls, atoms: bs.AtomArray, **kwargs) -> "ProteinComplex":
         # basically ensures that chains are in alphabetical order and all constituents are single-chain.
         chain_ids = sorted(np.unique(atoms.chain_id))
         return cls(
-            [ProteinChain(atoms[atoms.chain_id == chain_id]) for chain_id in chain_ids]
+            [
+                ProteinChain(atoms[atoms.chain_id == chain_id], **kwargs)
+                for chain_id in chain_ids
+            ]
         )
