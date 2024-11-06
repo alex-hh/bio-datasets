@@ -1,4 +1,6 @@
+import functools
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -13,6 +15,13 @@ from bio_datasets.np_utils import map_categories_to_indices
 def get_atom_elements():
     ccd_data = get_ccd()
     return list(np.unique(ccd_data["chem_comp_atom"]["type_symbol"].as_array()))
+
+
+def get_residue_frequencies():
+    freq_path = Path(__file__).parent.parent / "structure" / "library" / "cc-counts.tdd"
+    with open(freq_path, "r") as f:
+        _ = next(f)  # skip header
+        return {line.split()[0]: int(line.split()[1]) for line in f}
 
 
 ALL_ELEMENT_TYPES = get_atom_elements()
@@ -121,10 +130,10 @@ class ResidueDictionary:
     residue_atoms: Dict[str, List]  # defines composition and atom order
     residue_elements: Dict[str, List[str]]
     unknown_residue_name: str
-    # types define one-hot representations
+    # types define one-hot representations, and help with vectorised standardisation
+    atom_types: List[str]
+    element_types: List[str]
     residue_types: Optional[List[str]] = None  # one letter codes
-    element_types: Optional[List[str]] = None
-    atom_types: Optional[List[str]] = None
     backbone_atoms: Optional[List[str]] = None
     conversions: Optional[List[Dict]] = None
 
@@ -134,14 +143,12 @@ class ResidueDictionary:
                 self.residue_types
             ), "Duplicate residue types"
             assert len(self.residue_types) == len(self.residue_names)
-        if self.element_types is not None:
-            assert len(np.unique(self.element_types)) == len(
-                self.element_types
-            ), "Duplicate element types"
-        if self.atom_types is not None:
-            assert len(np.unique(self.atom_types)) == len(
-                self.atom_types
-            ), "Duplicate atom types"
+        assert len(np.unique(self.element_types)) == len(
+            self.element_types
+        ), "Duplicate element types"
+        assert len(np.unique(self.atom_types)) == len(
+            self.atom_types
+        ), "Duplicate atom types"
         if self.backbone_atoms is not None:
             assert len(np.unique(self.backbone_atoms)) == len(
                 self.backbone_atoms
@@ -164,6 +171,7 @@ class ResidueDictionary:
                 ]
 
     @classmethod
+    @functools.lru_cache(maxsize=10)
     def from_ccd(
         cls,
         residue_names: Optional[List[str]] = None,
@@ -171,12 +179,16 @@ class ResidueDictionary:
         keep_hydrogens: bool = False,
         keep_oxt: bool = False,  # keeping it will add an extra atom to each residue during standardisation
         backbone_atoms: Optional[List[str]] = None,
-        atom_types: Optional[List[str]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
+        minimum_pdb_entries: int = 100,  # ligands might often be unique - but then what's benefit of residue dictionary for unique ligands? SmallMolecule doens't even use residue dictionary
     ):
         ccd_data = get_ccd()
+        frequencies = get_residue_frequencies()
         res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array(str))
+        res_names = [
+            res for res in res_names if frequencies.get(res, 0) >= minimum_pdb_entries
+        ]
         if not keep_hydrogens:
             res_names = [
                 res for res in res_names if res != "H" and res != "D" and res != "D8U"
@@ -207,6 +219,11 @@ class ResidueDictionary:
         else:
             res_types = None
 
+        if backbone_atoms is not None:
+            assert (
+                len(categories) == 1
+            ), "Backbone atoms only supported for single category dictionaries"
+
         res_atom_names = {}
         res_element_types = {}
         chem_comp_atom = ccd_data["chem_comp_atom"]
@@ -230,6 +247,14 @@ class ResidueDictionary:
             res_atom_names[name] = list(res_atom_names_arr[mask])
             res_element_types[name] = list(res_elements_arr[mask])
 
+        all_res_mask = np.isin(chem_comp_atom["comp_id"].as_array(str), res_names)
+        all_res_elements = np.unique(
+            chem_comp_atom["type_symbol"].as_array(str)[all_res_mask]
+        )
+        all_res_atom_names = np.unique(
+            chem_comp_atom["atom_id"].as_array(str)[all_res_mask]
+        )
+
         return cls(
             residue_names=list(res_names),
             residue_types=res_types,
@@ -237,8 +262,8 @@ class ResidueDictionary:
             residue_elements=res_element_types,
             backbone_atoms=backbone_atoms,
             unknown_residue_name=unknown_residue_name,
-            element_types=ALL_ELEMENT_TYPES.copy(),
-            atom_types=atom_types,
+            element_types=list(all_res_elements),
+            atom_types=list(all_res_atom_names),
             conversions=conversions,
         )
 
@@ -249,7 +274,7 @@ class ResidueDictionary:
         )
 
     def __str__(self):
-        return f"ResidueDictionary ({len(self.residue_names)} residue types"
+        return f"ResidueDictionary ({len(self.residue_names)}) residue types"
 
     @property
     def residue_sizes(self):
@@ -258,26 +283,44 @@ class ResidueDictionary:
         )
 
     @property
-    def relative_atom_indices_mapping(self) -> np.ndarray:
+    def residue_categories(self):
+        return np.array(
+            [CHEM_COMPONENT_CATEGORIES[resname] for resname in self.residue_names]
+        )
+
+    def get_resname_relative_atom_indices_mapping(self, resname: str) -> np.ndarray:
+        if resname == self.unknown_residue_name:
+            # n.b. in some structures, UNK also contains CB, CG, ...
+            residue_atom_list = self.backbone_atoms or []
+        else:
+            residue_atom_list = self.residue_atoms[resname]
+        # TODO: can we vectorise this?
+        atom_indices_mapping = []
+        # relative_indices = np.argwhere(
+        atom_indices_mapping = np.full(len(self.atom_types), -100, dtype=int)
+        atom_in_res_mask = np.isin(self.atom_types, residue_atom_list)
+        relative_indices = np.array(
+            [
+                residue_atom_list.index(atom_type)
+                for atom_type in np.array(self.atom_types)[atom_in_res_mask]
+            ]
+        )
+        atom_indices_mapping[atom_in_res_mask] = relative_indices
+        return atom_indices_mapping
+
+    @property
+    def relative_atom_indices_mapping(
+        self, resnames: Optional[List[str]] = None
+    ) -> np.ndarray:
         """
         Get a mapping from atom type index to expected index relative to the start of a given residue.
         """
         assert self.atom_types is not None
         all_atom_indices_mapping = []
-        for resname in self.residue_names:
-            if resname == self.unknown_residue_name:
-                # n.b. in some structures, UNK also contains CB, CG, ...
-                residue_atom_list = self.backbone_atoms
-            else:
-                residue_atom_list = self.residue_atoms[resname]
-            atom_indices_mapping = []
-            for atom in self.atom_types:
-                if atom in residue_atom_list:
-                    relative_index = residue_atom_list.index(atom)
-                    atom_indices_mapping.append(relative_index)
-                else:
-                    atom_indices_mapping.append(-100)
-            all_atom_indices_mapping.append(np.array(atom_indices_mapping))
+        for resname in self.residue_names if resnames is None else resnames:
+            all_atom_indices_mapping.append(
+                self.get_resname_relative_atom_indices_mapping(resname)
+            )
         return np.stack(all_atom_indices_mapping, axis=0)
 
     @property
@@ -307,6 +350,9 @@ class ResidueDictionary:
         self, restype_index: np.ndarray, chain_id: np.ndarray
     ) -> np.ndarray:
         return self.residue_sizes[restype_index]
+
+    def get_residue_category(self, restype_index: np.ndarray) -> np.ndarray:
+        return self.residue_categories[restype_index]
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
         return self.relative_atom_indices_mapping[restype_index, atomtype_index]

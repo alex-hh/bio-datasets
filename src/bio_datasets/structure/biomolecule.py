@@ -30,19 +30,21 @@ def create_complete_atom_array_from_restype_index(
     Assumes single chain for now
     """
     if isinstance(chain_id, np.ndarray):
+        assert len(chain_id) == len(restype_index)
         unique_chain_ids = np.unique(chain_id)
         chain_atom_arrays = []
         chain_residue_starts = []
         residue_starts_offset = 0
-        for chain_id in unique_chain_ids:
+        for single_chain_id in unique_chain_ids:
+            chain_mask = chain_id == single_chain_id
             (
                 atom_array,
                 residue_starts,
                 full_annot_names,
             ) = create_complete_atom_array_from_restype_index(
-                restype_index=restype_index,
+                restype_index=restype_index[chain_mask],
                 residue_dictionary=residue_dictionary,
-                chain_id=chain_id,
+                chain_id=single_chain_id,
                 extra_fields=extra_fields,
                 backbone_only=backbone_only,
             )
@@ -62,6 +64,7 @@ def create_complete_atom_array_from_restype_index(
             full_annot_names,
         )
     else:
+
         if backbone_only:
             residue_sizes = len(residue_dictionary.backbone_atoms) * len(restype_index)
         else:
@@ -119,7 +122,10 @@ def create_complete_atom_array_from_restype_index(
         return new_atom_array, residue_starts, full_annot_names
 
 
-class Biomolecule:
+T = TypeVar("T", bound="Biomolecule")
+
+
+class Biomolecule(Generic[T]):
     """Base class for biomolecule objects.
 
     Biomolecules (DNA, RNA and Proteins) are chains of residues.
@@ -137,7 +143,8 @@ class Biomolecule:
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        drop_hydrogens: bool = True,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
         raise_error_on_unexpected: bool = False,
         replace_unexpected_with_unknown: bool = False,
     ):
@@ -145,7 +152,8 @@ class Biomolecule:
         self.backbone_only = backbone_only
         self.raise_error_on_unexpected = raise_error_on_unexpected
         self.replace_unexpected_with_unknown = replace_unexpected_with_unknown
-        self.drop_hydrogens = drop_hydrogens
+        self.keep_hydrogens = keep_hydrogens
+        self.keep_oxt = keep_oxt
         atoms = self.convert_residues(
             atoms,
             self.residue_dictionary,
@@ -161,7 +169,8 @@ class Biomolecule:
             residue_dictionary=self.residue_dictionary,
             verbose=verbose,
             backbone_only=self.backbone_only,
-            drop_hydrogens=self.drop_hydrogens,
+            keep_hydrogens=self.keep_hydrogens,
+            keep_oxt=self.keep_oxt,
         )
         self._standardised = True
 
@@ -205,6 +214,8 @@ class Biomolecule:
     def filter_atoms(
         atoms, residue_dictionary, raise_error_on_unexpected: bool = False
     ):
+        # drop water
+        atoms = atoms[atoms.res_name != "HOH"]
         expected_residue_mask = np.isin(
             atoms.res_name, residue_dictionary.residue_names
         )
@@ -221,13 +232,17 @@ class Biomolecule:
         residue_dictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        drop_hydrogens: bool = True,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
     ):
-        if drop_hydrogens:
+        # TODO: one solution to slowness might be to only standardise non chemical / non het - but how?
+        if not keep_hydrogens:
             assert (
                 "element" in atoms._annot
             ), "Elements must be present to exclude hydrogens"
             atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        if not keep_oxt:
+            atoms = atoms[atoms.atom_name != "OXT"]
         residue_starts = get_residue_starts(atoms)
         if (
             "atomtype_index" not in atoms._annot
@@ -382,12 +397,6 @@ class Biomolecule:
             ]
             full_residue_starts = get_residue_starts(new_atom_array)
         return new_atom_array
-
-    @classmethod
-    def from_pdb(cls, pdb_path: str):
-        pdbf = PDBFile.read(pdb_path)
-        atoms = pdbf.get_structure()
-        return cls(atoms)
 
     def to_pdb(self, pdb_path: str):
         # to write to pdb file, we have to drop nan coords
@@ -575,12 +584,33 @@ class BaseBiomoleculeComplex(Biomolecule):
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
 
     @classmethod
-    def from_atoms(cls, atoms: bs.AtomArray, **kwargs) -> "BaseBiomoleculeComplex":
+    def from_atoms(
+        cls,
+        atoms: bs.AtomArray,
+        residue_dictionary: Optional[ResidueDictionary] = None,
+        **kwargs,
+    ) -> "BaseBiomoleculeComplex":
         # basically ensures that chains are in alphabetical order and all constituents are single-chain.
         chain_ids = sorted(np.unique(atoms.chain_id))
+        if residue_dictionary is None:
+            residue_dictionary = ResidueDictionary.from_ccd()
         return cls(
             [
-                BiomoleculeChain(atoms[atoms.chain_id == chain_id], **kwargs)
+                BiomoleculeChain(
+                    atoms[atoms.chain_id == chain_id], residue_dictionary, **kwargs
+                )
                 for chain_id in chain_ids
             ]
+        )
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path: str,
+        format: str = "pdb",
+        extra_fields: Optional[List[str]] = None,
+        **kwargs,
+    ) -> T:
+        return cls.from_atoms(
+            load_structure(file_path, format, extra_fields=extra_fields), **kwargs
         )

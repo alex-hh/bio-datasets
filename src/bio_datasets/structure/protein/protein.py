@@ -5,8 +5,8 @@ We simply wrap Biotite's AtomArray and AtomArrayStack to offer a few convenience
 for dealing with protein structures in an ML context.
 """
 import copy
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import List, Optional, Union
 
 import biotite.structure as bs
 import numpy as np
@@ -247,18 +247,20 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         residue_dictionary: Optional[ResidueDictionary] = None,
         verbose: bool = False,
         backbone_only: bool = False,
-        drop_hydrogens: bool = True,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
         replace_unexpected_with_unknown: bool = False,
         raise_error_on_unexpected: bool = False,
     ):
         if residue_dictionary is None:
-            residue_dictionary = ProteinDictionary()
+            residue_dictionary = ProteinDictionary(drop_oxt=not keep_oxt)
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
-            drop_hydrogens=drop_hydrogens,
+            keep_hydrogens=keep_hydrogens,
+            keep_oxt=keep_oxt,
             replace_unexpected_with_unknown=replace_unexpected_with_unknown,
             raise_error_on_unexpected=raise_error_on_unexpected,
         )

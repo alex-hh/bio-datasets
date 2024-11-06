@@ -1,12 +1,16 @@
 import gzip
+import json
 import logging
 from collections import defaultdict
+from dataclasses import asdict
 from io import StringIO
 from pathlib import Path
 
 import numpy as np
 import requests
 from biotite.structure.io.pdbx import *
+
+from bio_datasets.structure.residue import ResidueDictionary
 
 OUTPUT_CCD = (
     Path(__file__).parent
@@ -206,3 +210,20 @@ if __name__ == "__main__":
 
     compressed_ccd = concatenate_ccd()
     compressed_ccd.write(OUTPUT_CCD)
+
+    # Download residue frequency data
+    logging.info("Downloading residue frequency data...")
+    url = "http://ligand-expo.rcsb.org/dictionaries/cc-counts.tdd"
+    response = requests.get(url)
+    response.raise_for_status()
+
+    # Save to same directory as CCD
+    freq_path = OUTPUT_CCD.parent / "cc-counts.tdd"
+    with open(freq_path, "wb") as f:
+        f.write(response.content)
+    logging.info(f"Saved residue frequencies to {freq_path}")
+
+    # Save residue dictionary
+    residue_dictionary = ResidueDictionary.from_ccd()
+    with open(OUTPUT_CCD.parent / "ccd_residue_dictionary.json", "w") as f:
+        json.dump(asdict(residue_dictionary), f)
