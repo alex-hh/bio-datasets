@@ -6,7 +6,7 @@ from biotite import structure as bs
 from .biomolecule import BaseBiomoleculeComplex, BiomoleculeChain, T
 from .chemical import SmallMolecule
 from .nucleic import DNAChain, RNAChain
-from .protein import ProteinChain, ProteinComplex, ProteinDictionary
+from .protein import ProteinChain, ProteinDictionary
 from .residue import CHEM_COMPONENT_CATEGORIES, ResidueDictionary
 
 

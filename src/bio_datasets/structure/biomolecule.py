@@ -163,14 +163,14 @@ class Biomolecule(Generic[T]):
             atoms,
             self.residue_dictionary,
             raise_error_on_unexpected=self.raise_error_on_unexpected,
+            keep_hydrogens=self.keep_hydrogens,
+            keep_oxt=self.keep_oxt,
         )  # e.g. check for standard residues.
         self.atoms = self.standardise_atoms(
             atoms,
             residue_dictionary=self.residue_dictionary,
             verbose=verbose,
             backbone_only=self.backbone_only,
-            keep_hydrogens=self.keep_hydrogens,
-            keep_oxt=self.keep_oxt,
         )
         self._standardised = True
 
@@ -212,10 +212,22 @@ class Biomolecule(Generic[T]):
 
     @staticmethod
     def filter_atoms(
-        atoms, residue_dictionary, raise_error_on_unexpected: bool = False
+        atoms,
+        residue_dictionary,
+        raise_error_on_unexpected: bool = False,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
     ):
         # drop water
         atoms = atoms[atoms.res_name != "HOH"]
+        if not keep_hydrogens:
+            assert (
+                "element" in atoms._annot
+            ), "Elements must be present to exclude hydrogens"
+            atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        if not keep_oxt:
+            # oxt complicates things for residue dictionary.
+            atoms = atoms[atoms.atom_name != "OXT"]
         expected_residue_mask = np.isin(
             atoms.res_name, residue_dictionary.residue_names
         )
@@ -232,17 +244,8 @@ class Biomolecule(Generic[T]):
         residue_dictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
     ):
         # TODO: one solution to slowness might be to only standardise non chemical / non het - but how?
-        if not keep_hydrogens:
-            assert (
-                "element" in atoms._annot
-            ), "Elements must be present to exclude hydrogens"
-            atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
-        if not keep_oxt:
-            atoms = atoms[atoms.atom_name != "OXT"]
         residue_starts = get_residue_starts(atoms)
         if (
             "atomtype_index" not in atoms._annot
@@ -421,13 +424,13 @@ class Biomolecule(Generic[T]):
     @property
     def restype_index(self):
         # TODO: parameterise this via a name e.g. 'aa'
-        return self.atoms["restype_index"][self._residue_starts]
+        return self.atoms["res_type_index"][self._residue_starts]
 
     @property
     def sequence(self) -> str:
         return "".join(
-            self.residue_dictionary.residue_types[
-                self.atoms.restype_index[self._residue_starts]
+            self.residue_dictionary.residue_letters[
+                self.atoms.res_type_index[self._residue_starts]
             ]
         )
 

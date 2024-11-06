@@ -224,6 +224,9 @@ if __name__ == "__main__":
     logging.info(f"Saved residue frequencies to {freq_path}")
 
     # Save residue dictionary
-    residue_dictionary = ResidueDictionary.from_ccd()
+    residue_dictionary = ResidueDictionary.from_ccd_dict()
     with open(OUTPUT_CCD.parent / "ccd_residue_dictionary.json", "w") as f:
         json.dump(asdict(residue_dictionary), f)
+    logging.info(
+        f"Saved residue dictionary to {OUTPUT_CCD.parent / 'ccd_residue_dictionary.json'}"
+    )
