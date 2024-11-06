@@ -8,9 +8,9 @@ from typing import Dict, List, Optional
 import numpy as np
 from biotite import structure as bs
 from biotite.structure.info.ccd import get_ccd
-from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
+from bio_datasets.structure.residue import get_residue_starts_mask
 
 
 def get_ccd_dict():
@@ -96,12 +96,13 @@ CARBOHYDRATE_TYPES = [
 CHEMICAL_TYPES = ["NON-POLYMER", "OTHER", "PEPTIDE-LIKE"]
 
 
+RES_NAMES = get_ccd()["chem_comp"]["id"].as_array()
+
 # we dont store these in memory bc too large
 def get_component_types():
     ccd_data = get_ccd()
-    res_names = ccd_data["chem_comp"]["id"].as_array()
     res_types = ccd_data["chem_comp"]["type"].as_array()
-    return {name: type for name, type in zip(res_names, res_types)}
+    return {name: type for name, type in zip(RES_NAMES, res_types)}
 
 
 def get_component_categories(chem_component_types: Dict[str, str]):
@@ -123,11 +124,24 @@ def get_component_categories(chem_component_types: Dict[str, str]):
     return categories
 
 
+# useful to store this globally because it helps us split chains in complex.py
+CHEM_COMPONENT_CATEGORIES = get_component_categories(get_component_types())
+
+
 def get_component_3to1():
     ccd_data = get_ccd()
     res_names = ccd_data["chem_comp"]["id"].as_array()
     res_types = ccd_data["chem_comp"]["one_letter_code"].as_array()
     return {name: code for name, code in zip(res_names, res_types) if code}
+
+
+def get_res_categories(res_name: np.ndarray):
+    unique_resnames = np.unique(res_name)
+    unique_restype_indices = map_categories_to_indices(res_name, unique_resnames)
+    unique_categories = np.array(
+        [CHEM_COMPONENT_CATEGORIES[resname] for resname in unique_resnames]
+    )
+    return unique_categories[unique_restype_indices]
 
 
 # TODO: support inferring chirality from residue name
@@ -432,8 +446,13 @@ class ResidueDictionary:
     ) -> np.ndarray:
         return self.residue_sizes[restype_index]
 
-    def get_residue_category(self, restype_index: np.ndarray) -> np.ndarray:
-        return self.residue_categories[restype_index]
+    def get_residue_categories(self, restype_index: np.ndarray) -> np.ndarray:
+        restype_indices = np.unique(restype_index)
+        resnames = np.array(self.residue_names)[restype_indices]
+        assert self.residue_categories is not None
+        cat_arr = np.array([self.residue_categories[resname] for resname in resnames])
+        subset_restype_indices = np.searchsorted(restype_indices, restype_index)
+        return cat_arr[subset_restype_indices]
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
         if len(self.residue_names) > 100:
