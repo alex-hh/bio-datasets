@@ -6,10 +6,10 @@ import numpy as np
 from biotite import structure as bs
 
 from .biomolecule import BaseBiomoleculeComplex, BiomoleculeChain, T
-from .chemical import SmallMolecule, to_small_molecules
+from .chemical import SmallMolecule
 from .nucleic import DNAChain, RNAChain
 from .protein import ProteinChain, ProteinDictionary
-from .residue import CHEM_COMPONENT_CATEGORIES, ResidueDictionary, get_res_categories
+from .residue import ResidueDictionary, get_res_categories
 
 
 def chain_name_generator():
@@ -50,17 +50,21 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
             if len(np.unique(molecule_types)) == 1:
                 chain_atoms.set_annotation("auth_chain_id", chain_atoms.chain_id)
                 chain_atoms.set_annotation(
-                    "chain_id", np.full_like(atoms.chain_id, next(chain_name_gen))
+                    "chain_id", np.full_like(chain_atoms.chain_id, next(chain_name_gen))
                 )
                 new_arrs.append(chain_atoms)
             else:
                 for molecule_type in np.unique(molecule_types):
                     if molecule_type == "small_molecule":
                         # each residue is a separate small molecule
-                        molecule_atoms_list = to_small_molecules(
-                            chain_atoms[chain_atoms.molecule_type == "small_molecule"]
-                        )
-                        for molecule_atoms in molecule_atoms_list:
+                        all_small_molecule_atoms = chain_atoms[
+                            chain_atoms.molecule_type == "small_molecule"
+                        ]
+                        res_ids = np.unique(all_small_molecule_atoms.res_id)
+                        for res_id in res_ids:
+                            molecule_atoms = all_small_molecule_atoms[
+                                all_small_molecule_atoms.res_id == res_id
+                            ]
                             molecule_atoms.set_annotation(
                                 "auth_chain_id", molecule_atoms.chain_id
                             )
@@ -83,7 +87,20 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                             np.full_like(molecule_atoms.chain_id, next(chain_name_gen)),
                         )
                         new_arrs.append(molecule_atoms)
-        return sum(new_arrs, bs.AtomArray(length=0))
+        # TODO: add annotations also.
+        relabelled_atoms = sum(new_arrs, bs.AtomArray(length=0))
+        for key in atoms._annot.keys():
+            if key not in relabelled_atoms._annot:
+                relabelled_atoms.set_annotation(
+                    key,
+                    np.concatenate(
+                        [molecule_atoms._annot[key] for molecule_atoms in new_arrs]
+                    ),
+                )
+        relabelled_atoms.set_annotation(
+            "molecule_type", get_res_categories(relabelled_atoms.res_name)
+        )
+        return relabelled_atoms
 
     @classmethod
     def from_atoms(
@@ -92,9 +109,10 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
         residue_dictionary: Optional[ResidueDictionary] = None,
         category_to_res_dict_preset_name: Optional[Dict[str, str]] = None,
         molecule_type_objects: Optional[Dict[str, Type[BiomoleculeChain]]] = None,
-        use_canonical_presets: bool = False,
+        use_canonical_presets: bool = True,
     ):
         """N.B. default residue dictionaries exclude non-canonical residues."""
+        # N.B. doing like this, each chain will be individually standardised. Alternatively standardise once at start then split and prevent re-standardisation.
         # TODO: check chain-based stuff works with pdb files as well as cif files - are chain ids null sometimes for hetatms?
         # and are chains often mixed - e..g ions in the same chain...
         chains = []
@@ -112,7 +130,7 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                 "protein": BiomoleculeChain,
                 "dna": BiomoleculeChain,
                 "rna": BiomoleculeChain,
-                "chemical": BiomoleculeChain,
+                "small_molecule": BiomoleculeChain,
             }
             residue_dictionary = residue_dictionary or ResidueDictionary.from_ccd_dict()
 
@@ -121,9 +139,10 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                 "protein": ProteinChain,
                 "dna": DNAChain,
                 "rna": RNAChain,
-                "chemical": SmallMolecule,
+                "small_molecule": SmallMolecule,
             }
 
+        atoms = BiomoleculeComplex.filter_atoms(atoms, keep_hydrogens=False)
         atoms = BiomoleculeComplex.split_relabel_chains(atoms)
 
         for chain_id in np.unique(atoms.chain_id):
@@ -132,7 +151,7 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
             chain_category = chain_categories[0]
             if chain_category == "protein":
                 chains.append(
-                    molecule_type_objects["protein"].from_atoms(
+                    molecule_type_objects["protein"](
                         atoms[atoms.chain_id == chain_id],
                         residue_dictionary=ProteinDictionary.from_preset(
                             category_to_res_dict_preset_name["protein"]
@@ -141,9 +160,9 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                         else residue_dictionary,
                     )
                 )
-            elif chain_category[0] == "dna":
+            elif chain_category == "dna":
                 chains.append(
-                    molecule_type_objects["dna"].from_atoms(
+                    molecule_type_objects["dna"](
                         atoms[atoms.chain_id == chain_id],
                         residue_dictionary=ResidueDictionary.from_preset(
                             category_to_res_dict_preset_name["dna"]
@@ -152,9 +171,9 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                         else residue_dictionary,
                     )
                 )
-            elif chain_category[0] == "rna":
+            elif chain_category == "rna":
                 chains.append(
-                    molecule_type_objects["rna"].from_atoms(
+                    molecule_type_objects["rna"](
                         atoms[atoms.chain_id == chain_id],
                         residue_dictionary=ResidueDictionary.from_preset(
                             category_to_res_dict_preset_name["rna"]
@@ -163,14 +182,14 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                         else residue_dictionary,
                     )
                 )
-            elif chain_category[0] == "chemical":
+            elif chain_category == "small_molecule":
                 chains.append(
-                    molecule_type_objects["chemical"].from_atoms(
+                    molecule_type_objects["small_molecule"](
                         atoms[atoms.chain_id == chain_id],
                     )
                 )
             else:
-                raise ValueError(f"Unsupported chain category: {chain_categories[0]}")
+                raise ValueError(f"Unsupported chain category: {chain_category}")
         return cls(chains)
 
     @property
@@ -224,3 +243,9 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
             residue_mask_to=residue_mask_to,
             nan_fill=nan_fill,
         )
+
+    def __str__(self):
+        return str(self._chains_lookup)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}: {str(self._chains_lookup)}"

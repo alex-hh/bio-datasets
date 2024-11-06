@@ -27,10 +27,7 @@ from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
 register_preset_res_dict(
     "protein",
     residue_names=copy.deepcopy(protein_constants.resnames),
-    residue_types=copy.deepcopy(protein_constants.restypes_with_x),
     atom_types=copy.deepcopy(protein_constants.atom_types),
-    residue_atoms=copy.deepcopy(protein_constants.residue_atoms),
-    residue_elements=copy.deepcopy(protein_constants.residue_elements),
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
     conversions=[
@@ -105,7 +102,7 @@ class ProteinDictionary(ResidueDictionary):
             relative_atom_index == self.residue_sizes[restype_index]
         )
         atom_names = np.full((len(restype_index)), "", dtype="U6")
-        atom_names[~oxt_mask] = self.standard_atoms_by_residue[
+        atom_names[~oxt_mask] = self.standard_atoms_by_residue()[
             restype_index[~oxt_mask],
             relative_atom_index[~oxt_mask],
         ]
@@ -264,10 +261,6 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
             replace_unexpected_with_unknown=replace_unexpected_with_unknown,
             raise_error_on_unexpected=raise_error_on_unexpected,
         )
-
-    @property
-    def chain_id(self):
-        return self.atoms.chain_id[0]
 
 
 class ProteinComplex(ProteinMixin, BaseBiomoleculeComplex):

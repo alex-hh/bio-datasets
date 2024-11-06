@@ -1,4 +1,3 @@
-import functools
 import itertools
 import json
 from dataclasses import dataclass
@@ -8,9 +7,9 @@ from typing import Dict, List, Optional
 import numpy as np
 from biotite import structure as bs
 from biotite.structure.info.ccd import get_ccd
+from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
-from bio_datasets.structure.residue import get_residue_starts_mask
 
 
 def get_ccd_dict():
@@ -137,7 +136,7 @@ def get_component_3to1():
 
 def get_res_categories(res_name: np.ndarray):
     unique_resnames = np.unique(res_name)
-    unique_restype_indices = map_categories_to_indices(res_name, unique_resnames)
+    unique_restype_indices = map_categories_to_indices(res_name, list(unique_resnames))
     unique_categories = np.array(
         [CHEM_COMPONENT_CATEGORIES[resname] for resname in unique_resnames]
     )
@@ -193,12 +192,14 @@ class ResidueDictionary:
                 conversion["atom_swaps"] = [
                     tuple(swaps) for swaps in conversion["atom_swaps"]
                 ]
+        self._expected_relative_atom_indices_mapping = None
 
     @classmethod
     def from_ccd_dict(
         cls,
         residue_names: Optional[List[str]] = None,
         category: Optional[str] = None,
+        atom_types: Optional[List[str]] = None,
         backbone_atoms: Optional[List[str]] = None,
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
@@ -258,7 +259,10 @@ class ResidueDictionary:
         element_types = list(
             sorted(list(set(itertools.chain(*residue_elements.values()))))
         )
-        atom_types = list(sorted(list(set(itertools.chain(*residue_atoms.values())))))
+        if atom_types is None:
+            atom_types = list(
+                sorted(list(set(itertools.chain(*residue_atoms.values()))))
+            )
 
         return cls(
             residue_names=res_names,
@@ -416,6 +420,10 @@ class ResidueDictionary:
 
     @property
     def max_residue_size(self):
+        """Max number of atoms in any residue.
+
+        (Across CCD, max is 240)
+        """
         return self.residue_sizes.max()
 
     @property
@@ -432,9 +440,7 @@ class ResidueDictionary:
 
         N.B.This function remains a bit of a bottleneck.
         """
-        print(
-            "max_residue_size", self.max_residue_size
-        )  # TODO: check max size across ccd
+        resnames = resnames or self.residue_names
         arr = np.full((len(resnames), self.max_residue_size), "", dtype="U6")
         for ix, residue_name in enumerate(resnames):
             residue_atoms = self.residue_atoms[residue_name]

@@ -4,7 +4,10 @@ from typing import Dict, List, Optional
 
 import numpy as np
 from biotite import structure as bs
-from biotite.structure.filter import _canonical_nucleotide_list, _phosphate_backbone
+from biotite.structure.filter import (
+    _canonical_nucleotide_list,
+    _phosphate_backbone_atoms,
+)
 from biotite.structure.info.ccd import get_ccd
 from biotite.structure.io.pdbx import get_component
 

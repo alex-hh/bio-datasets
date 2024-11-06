@@ -186,6 +186,10 @@ class Biomolecule(Generic[T]):
         )
         self._standardised = True
 
+    @property
+    def backbone_atoms(self):
+        return self.residue_dictionary.backbone_atoms
+
     @classmethod
     def from_file(
         cls,
@@ -227,7 +231,7 @@ class Biomolecule(Generic[T]):
     @staticmethod
     def filter_atoms(
         atoms,
-        residue_dictionary,
+        residue_dictionary: Optional[ResidueDictionary] = None,
         raise_error_on_unexpected: bool = False,
         keep_hydrogens: bool = False,
         keep_oxt: bool = False,
@@ -242,15 +246,17 @@ class Biomolecule(Generic[T]):
         if not keep_oxt:
             # oxt complicates things for residue dictionary.
             atoms = atoms[atoms.atom_name != "OXT"]
-        expected_residue_mask = np.isin(
-            atoms.res_name, residue_dictionary.residue_names
-        )
-        if raise_error_on_unexpected and ~expected_residue_mask.any():
-            unexpected_residues = np.unique(atoms[~expected_residue_mask].res_name)
-            raise ValueError(
-                f"Found unexpected residues: {unexpected_residues} in atom array"
+        if residue_dictionary is not None:
+            expected_residue_mask = np.isin(
+                atoms.res_name, residue_dictionary.residue_names
             )
-        return atoms[expected_residue_mask]
+            if raise_error_on_unexpected and ~expected_residue_mask.any():
+                unexpected_residues = np.unique(atoms[~expected_residue_mask].res_name)
+                raise ValueError(
+                    f"Found unexpected residues: {unexpected_residues} in atom array"
+                )
+            return atoms[expected_residue_mask]
+        return atoms
 
     @staticmethod
     def reorder_chains(atoms):
@@ -483,6 +489,8 @@ class Biomolecule(Generic[T]):
             return self.__class__(self.atoms[key])
 
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
+        if atom_names is None:
+            atom_names = self.backbone_atoms
         # requires self.backbone_atoms to be in correct order
         assert all(
             [atom in self.backbone_atoms for atom in atom_names]
@@ -594,6 +602,10 @@ class BiomoleculeChain(Biomolecule):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
+        raise_error_on_unexpected: bool = False,
+        replace_unexpected_with_unknown: bool = False,
     ):
         assert (
             len(np.unique(atoms.chain_id)) == 1
@@ -603,13 +615,24 @@ class BiomoleculeChain(Biomolecule):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
+            keep_hydrogens=keep_hydrogens,
+            keep_oxt=keep_oxt,
+            raise_error_on_unexpected=raise_error_on_unexpected,
+            replace_unexpected_with_unknown=replace_unexpected_with_unknown,
         )
+
+    @property
+    def chain_id(self):
+        return self.atoms.chain_id[0]
 
 
 class BaseBiomoleculeComplex(Biomolecule):
     def __init__(self, chains: List[BiomoleculeChain]):
         self._chain_ids = [mol.chain_id for mol in chains]
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
+
+    def __str__(self):
+        return str(self._chains_lookup)
 
     @classmethod
     def from_atoms(
@@ -630,6 +653,12 @@ class BaseBiomoleculeComplex(Biomolecule):
                 for chain_id in chain_ids
             ]
         )
+
+    def get_chain(self, chain_id: str):
+        return self._chains_lookup[chain_id]
+
+    def __getitem__(self, key):
+        return self.get_chain(key)
 
     @classmethod
     def from_file(

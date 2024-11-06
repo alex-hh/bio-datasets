@@ -1,2 +1,2 @@
-from .dna import DNAChain, DNADictionary
-from .rna import RNAChain, RNADictionary
+from .dna import DNAChain
+from .rna import RNAChain
