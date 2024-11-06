@@ -33,6 +33,7 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
     ):
         """N.B. default residue dictionaries exclude non-canonical residues."""
         # TODO: check chain-based stuff works with pdb files as well as cif files - are chain ids null sometimes for hetatms?
+        # and are chains often mixed - e..g ions in the same chain...
         chains = []
         if use_canonical_presets:
             assert (
@@ -93,7 +94,7 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                 chains.append(
                     BiomoleculeChain(
                         atoms[atoms.chain_id == chain_id],
-                        residue_dictionary=ResidueDictionary.from_ccd()
+                        residue_dictionary=ResidueDictionary.from_ccd_dict()
                         if residue_dictionary is None
                         else residue_dictionary,
                     )

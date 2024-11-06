@@ -146,7 +146,6 @@ class ResidueDictionary:
     residue_categories: Optional[Dict[str, str]] = None
     backbone_atoms: Optional[List[str]] = None
     conversions: Optional[List[Dict]] = None
-    _expected_relative_atom_indices_mapping: Optional[Dict[str, List[int]]] = None
 
     def __post_init__(self):
         assert len(self.residue_letters) == len(self.residue_names)
@@ -242,13 +241,7 @@ class ResidueDictionary:
         residue_atoms = {res: ccd_dict["residue_atoms"][res] for res in res_names}
         residue_elements = {res: ccd_dict["residue_elements"][res] for res in res_names}
         residue_categories = {res: res_categories[res] for res in res_names}
-        if ccd_dict["_expected_relative_atom_indices_mapping"] is not None:
-            _expected_relative_atom_indices_mapping = {
-                res: ccd_dict["_expected_relative_atom_indices_mapping"][res]
-                for res in res_names
-            }
-        else:
-            _expected_relative_atom_indices_mapping = None
+
         element_types = list(
             sorted(list(set(itertools.chain(*residue_elements.values()))))
         )
@@ -265,7 +258,6 @@ class ResidueDictionary:
             element_types=element_types,
             atom_types=atom_types,
             conversions=conversions,
-            _expected_relative_atom_indices_mapping=_expected_relative_atom_indices_mapping,
         )
 
     @classmethod
@@ -382,9 +374,6 @@ class ResidueDictionary:
             residue_atom_list = self.backbone_atoms or []
         else:
             residue_atom_list = self.residue_atoms[res_name]
-        # TODO: can we vectorise this?
-        atom_indices_mapping = []
-        # relative_indices = np.argwhere(
         atom_indices_mapping = np.full(len(self.atom_types), -100, dtype=int)
         atom_in_res_mask = np.isin(self.atom_types, residue_atom_list)
         relative_indices = np.array(
@@ -396,37 +385,20 @@ class ResidueDictionary:
         atom_indices_mapping[atom_in_res_mask] = relative_indices
         return atom_indices_mapping
 
-    def set_expected_relative_atom_indices_mapping(self):
-        self._expected_relative_atom_indices_mapping = {}
-        for resname in self.residue_names:
-            self._expected_relative_atom_indices_mapping[resname] = list(
-                self.get_res_name_relative_atom_indices_mapping(resname)
-            )
-
-    @property
     def relative_atom_indices_mapping(
         self, resnames: Optional[List[str]] = None
     ) -> np.ndarray:
         """
         Get a mapping from atom type index to expected index relative to the start of a given residue.
         """
-        if self._expected_relative_atom_indices_mapping is not None:
-            return np.array(
-                [
-                    self._expected_relative_atom_indices_mapping[resname]
-                    for resname in self.residue_names
-                ]
-            )
         assert self.atom_types is not None
         all_atom_indices_mapping = []
         expected_relative_atom_indices_mapping = {}
+
         for resname in self.residue_names if resnames is None else resnames:
             res_mapping = self.get_res_name_relative_atom_indices_mapping(resname)
             expected_relative_atom_indices_mapping[resname] = list(res_mapping)
             all_atom_indices_mapping.append(res_mapping)
-        self._expected_relative_atom_indices_mapping = (
-            expected_relative_atom_indices_mapping
-        )
         return np.stack(all_atom_indices_mapping, axis=0)
 
     @property
@@ -461,7 +433,30 @@ class ResidueDictionary:
         return self.residue_categories[restype_index]
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
-        return self.relative_atom_indices_mapping[restype_index, atomtype_index]
+        import time
+
+        t0 = time.time()
+        if len(self.residue_names) > 100:
+            # for large dictionaries, only compute atom indices for subset of residues
+            restype_indices = np.unique(restype_index)
+            resnames = np.array(self.residue_names)[restype_indices]
+            # index relative to restype_indices of restype_index
+            subset_restype_indices = np.searchsorted(restype_indices, restype_index)
+            mapping = self.relative_atom_indices_mapping(resnames)[
+                subset_restype_indices, atomtype_index
+            ]
+        else:
+            # for small dictionaries, just compute and cache the full mapping
+            if self._expected_relative_atom_indices_mapping is None:
+                self._expected_relative_atom_indices_mapping = (
+                    self.relative_atom_indices_mapping()
+                )
+            mapping = self._expected_relative_atom_indices_mapping[
+                restype_index, atomtype_index
+            ]
+        t1 = time.time()
+        print(f"time taken: {t1 - t0}")
+        return mapping
 
     def get_atom_names(
         self,
