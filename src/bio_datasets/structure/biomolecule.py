@@ -184,7 +184,9 @@ class Biomolecule(Generic[T]):
         **kwargs,
     ):
         if residue_dictionary is None:
-            residue_dictionary = ResidueDictionary.from_ccd()  # TODO: better default?
+            residue_dictionary = (
+                ResidueDictionary.from_ccd_dict()
+            )  # TODO: better default?
         atoms = load_structure(file_path, format=format, extra_fields=extra_fields)
         return cls(atoms, residue_dictionary, **kwargs)
 
@@ -269,7 +271,7 @@ class Biomolecule(Generic[T]):
             )
         if "restype_index" not in atoms._annot:
             atoms.set_annotation(
-                "restype_index", residue_dictionary.resname_to_index(atoms.res_name)
+                "restype_index", residue_dictionary.res_name_to_index(atoms.res_name)
             )
         atoms.set_annotation(
             "res_index",
@@ -596,7 +598,7 @@ class BaseBiomoleculeComplex(Biomolecule):
         # basically ensures that chains are in alphabetical order and all constituents are single-chain.
         chain_ids = sorted(np.unique(atoms.chain_id))
         if residue_dictionary is None:
-            residue_dictionary = ResidueDictionary.from_ccd()
+            residue_dictionary = ResidueDictionary.from_ccd_dict()
         return cls(
             [
                 BiomoleculeChain(

@@ -1,3 +1,4 @@
+"""Modified from biotite setup_ccd.py"""
 import gzip
 import json
 import logging
@@ -208,7 +209,14 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(message)s")
     OUTPUT_CCD.parent.mkdir(parents=True, exist_ok=True)
 
-    compressed_ccd = concatenate_ccd()
+    compressed_ccd = concatenate_ccd(
+        [
+            "chem_comp",
+            "chem_comp_atom",
+            "chem_comp_bond",
+            "pdbx_chem_comp_descriptor",  # added for SMILES
+        ]
+    )
     compressed_ccd.write(OUTPUT_CCD)
 
     # Download residue frequency data
@@ -224,7 +232,8 @@ if __name__ == "__main__":
     logging.info(f"Saved residue frequencies to {freq_path}")
 
     # Save residue dictionary
-    residue_dictionary = ResidueDictionary.from_ccd_dict()
+    residue_dictionary = ResidueDictionary.from_ccd()
+    residue_dictionary.set_expected_relative_atom_indices_mapping()
     with open(OUTPUT_CCD.parent / "ccd_residue_dictionary.json", "w") as f:
         json.dump(asdict(residue_dictionary), f)
     logging.info(

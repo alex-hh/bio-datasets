@@ -50,7 +50,7 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
                 "rna": BiomoleculeChain,
                 "chemical": BiomoleculeChain,
             }
-            residue_dictionary = residue_dictionary or ResidueDictionary.from_ccd()
+            residue_dictionary = residue_dictionary or ResidueDictionary.from_ccd_dict()
 
         else:
             chain_mapping = chain_mapping or {
