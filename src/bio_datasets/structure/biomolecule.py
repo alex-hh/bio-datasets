@@ -23,11 +23,10 @@ def create_complete_atom_array_from_restype_index(
     chain_id: Tuple[str, np.ndarray],
     extra_fields: Optional[List[str]] = None,
     backbone_only: bool = False,
+    residue_index_offset: int = 0,
 ):
     """
     Populate annotations from restype_index, assuming all atoms are present.
-
-    Assumes single chain for now
     """
     if isinstance(chain_id, np.ndarray):
         assert len(chain_id) == len(restype_index)
@@ -35,6 +34,7 @@ def create_complete_atom_array_from_restype_index(
         chain_atom_arrays = []
         chain_residue_starts = []
         residue_starts_offset = 0
+        res_index_offset = 0
         for single_chain_id in unique_chain_ids:
             chain_mask = chain_id == single_chain_id
             (
@@ -47,10 +47,13 @@ def create_complete_atom_array_from_restype_index(
                 chain_id=single_chain_id,
                 extra_fields=extra_fields,
                 backbone_only=backbone_only,
+                residue_index_offset=res_index_offset,
             )
             chain_atom_arrays.append(atom_array)
             chain_residue_starts.append(residue_starts + residue_starts_offset)
             residue_starts_offset += len(atom_array)
+            res_index_offset += atom_array.res_index.max() + 1
+
         concatenated_array = sum(chain_atom_arrays, bs.AtomArray(length=0))
         for key in atom_array._annot.keys():
             if key not in concatenated_array._annot:
@@ -88,7 +91,6 @@ def create_complete_atom_array_from_restype_index(
         residue_index = (
             np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
         )
-
         relative_atom_index = (
             np.arange(len(new_atom_array)) - residue_starts[residue_index]
         )
@@ -102,15 +104,25 @@ def create_complete_atom_array_from_restype_index(
             "res_name",
             np.array(residue_dictionary.residue_names)[new_atom_array.restype_index],
         )
-        new_atom_array.set_annotation("res_index", residue_index)
+
+        new_atom_array.set_annotation("chain_res_index", residue_index)
+        new_atom_array.set_annotation("res_index", residue_index + residue_index_offset)
         new_atom_array.set_annotation("res_id", residue_index + 1)
         new_atom_array.set_annotation(
             "element", np.char.array(new_atom_array.atom_name).astype("U1")
         )
+        new_atom_array.set_annotation(
+            "elemtype_index",
+            map_categories_to_indices(
+                new_atom_array.element, residue_dictionary.element_types
+            ),
+        )
         full_annot_names += [
             "atom_name",
             "restype_index",
+            "elemtype_index",
             "res_name",
+            "chain_res_index",
             "res_index",
             "res_id",
         ]
@@ -241,13 +253,22 @@ class Biomolecule(Generic[T]):
         return atoms[expected_residue_mask]
 
     @staticmethod
+    def reorder_chains(atoms):
+        chain_ids = np.unique(atoms.chain_id)
+        atom_arrs = []
+        for chain_id in chain_ids:
+            chain_mask = atoms.chain_id == chain_id
+            atom_arrs.append(atoms[chain_mask])
+        return sum(atom_arrs, bs.AtomArray(length=0))
+
+    @staticmethod
     def standardise_atoms(
         atoms,
         residue_dictionary,
         verbose: bool = False,
         backbone_only: bool = False,
     ):
-        # TODO: one solution to slowness might be to only standardise non chemical / non het - but how?
+        atoms = Biomolecule.reorder_chains(atoms)
         residue_starts = get_residue_starts(atoms)
         if (
             "atomtype_index" not in atoms._annot
@@ -273,6 +294,7 @@ class Biomolecule(Generic[T]):
             atoms.set_annotation(
                 "restype_index", residue_dictionary.res_name_to_index(atoms.res_name)
             )
+
         atoms.set_annotation(
             "res_index",
             np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1,
@@ -342,6 +364,7 @@ class Biomolecule(Generic[T]):
                 or annot_name in full_annot_names
             ):
                 continue
+
             getattr(new_atom_array, annot_name)[
                 existing_atom_indices_in_full_array
             ] = annot.astype(new_atom_array._annot[annot_name].dtype)

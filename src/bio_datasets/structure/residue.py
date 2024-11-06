@@ -181,7 +181,6 @@ class ResidueDictionary:
                 ]
 
     @classmethod
-    @functools.lru_cache(maxsize=10)
     def from_ccd_dict(
         cls,
         residue_names: Optional[List[str]] = None,
@@ -411,15 +410,19 @@ class ResidueDictionary:
         assert self.element_types is not None
         return len(self.element_types)
 
-    @property
-    def standard_atoms_by_residue(self):
+    def standard_atoms_by_residue(self, resnames: Optional[List[str]] = None):
         """Return a fixed size array of atom names for each residue type.
 
         Shape (num_residue_types x max_atoms_per_residue)
         e.g. for proteins we use atom14 (21 x 14)
+
+        N.B.This function remains a bit of a bottleneck.
         """
-        arr = np.full((len(self.residue_names), self.max_residue_size), "", dtype="U6")
-        for ix, residue_name in enumerate(self.residue_names):
+        print(
+            "max_residue_size", self.max_residue_size
+        )  # TODO: check max size across ccd
+        arr = np.full((len(resnames), self.max_residue_size), "", dtype="U6")
+        for ix, residue_name in enumerate(resnames):
             residue_atoms = self.residue_atoms[residue_name]
             arr[ix, : len(residue_atoms)] = residue_atoms
         return arr
@@ -433,9 +436,6 @@ class ResidueDictionary:
         return self.residue_categories[restype_index]
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
-        import time
-
-        t0 = time.time()
         if len(self.residue_names) > 100:
             # for large dictionaries, only compute atom indices for subset of residues
             restype_indices = np.unique(restype_index)
@@ -454,8 +454,6 @@ class ResidueDictionary:
             mapping = self._expected_relative_atom_indices_mapping[
                 restype_index, atomtype_index
             ]
-        t1 = time.time()
-        print(f"time taken: {t1 - t0}")
         return mapping
 
     def get_atom_names(
@@ -464,8 +462,12 @@ class ResidueDictionary:
         relative_atom_index: np.ndarray,
         chain_id: np.ndarray,
     ):
-        return self.standard_atoms_by_residue[
-            restype_index,
+        restype_indices = np.unique(restype_index)
+        resnames = np.array(self.residue_names)[restype_indices]
+        # index relative to restype_indices of restype_index
+        subset_restype_indices = np.searchsorted(restype_indices, restype_index)
+        return self.standard_atoms_by_residue(resnames)[
+            subset_restype_indices,
             relative_atom_index,
         ]
 
