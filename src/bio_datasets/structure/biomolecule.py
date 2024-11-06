@@ -220,10 +220,15 @@ class Biomolecule(Generic[T]):
             raise NotImplementedError("Not implemented")
         for conversion_dict in residue_dictionary.conversions or []:
             atom_swaps = conversion_dict["atom_swaps"]
+            element_swaps = conversion_dict["element_swaps"]
             from_mask = (atoms.res_name == conversion_dict["residue"]).astype(bool)
             for swap in atom_swaps:
                 atoms.atom_name[
                     from_mask & (atoms.atom_name == swap[0]).astype(bool)
+                ] = swap[1]
+            for swap in element_swaps:
+                atoms.element[
+                    from_mask & (atoms.element == swap[0]).astype(bool)
                 ] = swap[1]
             atoms.res_name[from_mask] = conversion_dict["to_residue"]
         return atoms

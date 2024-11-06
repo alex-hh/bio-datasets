@@ -31,8 +31,18 @@ register_preset_res_dict(
     backbone_atoms=["N", "CA", "C", "O"],
     unknown_residue_name="UNK",
     conversions=[
-        {"residue": "MSE", "to_residue": "MET", "atom_swaps": [("SE", "SD")]},
-        {"residue": "SEC", "to_residue": "CYS", "atom_swaps": [("SE", "SG")]},
+        {
+            "residue": "MSE",
+            "to_residue": "MET",
+            "atom_swaps": [("SE", "SD")],
+            "element_swaps": [("SE", "S")],
+        },
+        {
+            "residue": "SEC",
+            "to_residue": "CYS",
+            "atom_swaps": [("SE", "SG")],
+            "element_swaps": [("SE", "S")],
+        },
     ],
 )
 
@@ -41,7 +51,7 @@ register_preset_res_dict(
 class ProteinDictionary(ResidueDictionary):
     """Defaults configure a dictionary with just the 20 standard amino acids"""
 
-    drop_oxt: bool = False
+    keep_oxt: bool = False
 
     def _check_atom14_compatible(self):
         return all(len(res_ats) <= 14 for res_ats in self.residue_atoms.values())
@@ -72,7 +82,7 @@ class ProteinDictionary(ResidueDictionary):
         if isinstance(chain_id, np.ndarray):
             assert len(np.unique(chain_id)) == 1
         residue_sizes = self.residue_sizes[restype_index].copy()
-        if not self.drop_oxt:
+        if self.keep_oxt:
             residue_sizes[-1] += 1  # add oxt
         return residue_sizes
 
@@ -168,7 +178,7 @@ class ProteinMixin:
         This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
         and `to_atom37` can be applied safely downstream.
         """
-        if residue_dictionary.drop_oxt:
+        if not residue_dictionary.keep_oxt:
             atoms = atoms[atoms.atom_name != "OXT"]
         return Biomolecule.standardise_atoms(
             atoms,
@@ -250,7 +260,9 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         raise_error_on_unexpected: bool = False,
     ):
         if residue_dictionary is None:
-            residue_dictionary = ProteinDictionary(drop_oxt=not keep_oxt)
+            residue_dictionary = ProteinDictionary.from_preset(
+                "protein", keep_oxt=keep_oxt
+            )
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,

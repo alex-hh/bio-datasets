@@ -484,7 +484,7 @@ class AtomArrayFeature(CustomFeature):
                 # it's useful to store numeric index for vectorised decoding, complete atom array creation, etc
                 atom_array_struct[
                     "restype_index"
-                ] = self.residue_dictionary.resname_to_index(
+                ] = self.residue_dictionary.res_name_to_index(
                     value.res_name[residue_starts]
                 )
             else:

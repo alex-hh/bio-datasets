@@ -192,6 +192,9 @@ class ResidueDictionary:
                 conversion["atom_swaps"] = [
                     tuple(swaps) for swaps in conversion["atom_swaps"]
                 ]
+                conversion["element_swaps"] = [
+                    tuple(swaps) for swaps in conversion["element_swaps"]
+                ]
         self._expected_relative_atom_indices_mapping = None
 
     @classmethod
@@ -204,6 +207,7 @@ class ResidueDictionary:
         unknown_residue_name: str = "UNK",
         conversions: Optional[List[Dict]] = None,
         minimum_pdb_entries: int = 1,  # ligands might often be unique - arguably res dict not that useful for these cases?
+        **kwargs,
     ):
         """Hydrogens and OXT are not included in the pre-built dictionary"""
         ccd_dict = get_ccd_dict()
@@ -275,6 +279,7 @@ class ResidueDictionary:
             element_types=element_types,
             atom_types=atom_types,
             conversions=conversions,
+            **kwargs,
         )
 
     @classmethod
@@ -528,8 +533,8 @@ class ResidueDictionary:
     def res_letter_to_name(self, res_letter: np.ndarray) -> np.ndarray:
         return np.array(self.residue_names)[self.res_letter_to_index(res_letter)]
 
-    def decode_res_letter_index(self, res_letter_index: np.ndarray) -> np.ndarray:
-        return "".join(np.array(self.residue_letters)[res_letter_index])
+    def decode_restype_index(self, restype_index: np.ndarray) -> np.ndarray:
+        return "".join(np.array(self.residue_letters)[restype_index])
 
     def atom_full_to_atom_short(self):
         # eg atom37->atom14

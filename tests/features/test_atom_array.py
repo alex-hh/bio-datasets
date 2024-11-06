@@ -10,7 +10,7 @@ def test_encode_decode_atom_array(afdb_atom_array):
     We encode residue-level annotations separately to the atom coords so
     important to check that they get decoded back to the atom array correctly.
     """
-    prot_dict = ProteinDictionary()
+    prot_dict = ProteinDictionary.from_preset("protein")
     feat = AtomArrayFeature(residue_dictionary=prot_dict)
     encoded = feat.encode_example(afdb_atom_array)
     bs_sequences, _ = to_sequence(afdb_atom_array)

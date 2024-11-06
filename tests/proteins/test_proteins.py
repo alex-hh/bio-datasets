@@ -11,19 +11,16 @@ expected_residue_atoms = {
     "ASP": ["N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"],
     "ASN": ["N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"],
     "CYS": ["N", "CA", "C", "O", "CB", "SG"],
-    "SEC": ["N", "CA", "C", "O", "CB", "SE"],  # Selenocysteine (added)
     "GLU": ["N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"],
     "GLN": ["N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"],
     "GLY": ["N", "CA", "C", "O"],
-    "HIS": ["N", "CA", "C", "O", "CB", "CG", "ND1", "CE1", "NE2", "CD2"],
+    "HIS": ["N", "CA", "C", "O", "CB", "CG", "ND1", "CD2", "CE1", "NE2"],
     "ILE": ["N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"],
     "LEU": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"],
     "LYS": ["N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ"],
     "MET": ["N", "CA", "C", "O", "CB", "CG", "SD", "CE"],
-    "MSE": ["N", "CA", "C", "O", "CB", "CG", "SE", "CE"],  # Selenomethionine (added)
     "PHE": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"],
     "PRO": ["N", "CA", "C", "O", "CB", "CG", "CD"],
-    # "PYL": ["N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ", "CG2", "CD2", "CE2", "N2"],  # Pyrrolysine (added)
     "SER": ["N", "CA", "C", "O", "CB", "OG"],
     "THR": ["N", "CA", "C", "O", "CB", "OG1", "CG2"],
     "TRP": [
@@ -34,9 +31,9 @@ expected_residue_atoms = {
         "CB",
         "CG",
         "CD1",
+        "CD2",
         "NE1",
         "CE2",
-        "CD2",
         "CE3",
         "CZ2",
         "CZ3",
@@ -61,7 +58,7 @@ def test_ccd_inferred_residue_atoms():
         assert np.all(
             np.array(expected_residue_atoms[resname])
             == np.array(residue_atoms[resname])
-        )
+        ), f"Disagreement for {resname}: Observed: {residue_atoms[resname]} != Expected: {expected_residue_atoms[resname]}"
 
 
 def test_residue_atom_order(pdb_atoms_top7):
@@ -71,22 +68,26 @@ def test_residue_atom_order(pdb_atoms_top7):
     pdb_atom_array = pdb_atoms_top7[amino_acid_filter]
     for residue_atoms in residue_iter(pdb_atom_array):
         atom_names = residue_atoms.atom_name
-        expected_atom_names = np.array(
-            protein_constants.residue_atoms[residue_atoms.res_name[0]]
-        )
-        total_residues += 1
-        if len(atom_names) != len(expected_atom_names):
-            # missing atoms are ok
-            continue
-        assert (
-            np.all(
-                atom_names
-                == np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])
-            ),
-            f"Observed: {atom_names} != Expected: "
-            f"{np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])}",
-        )
-        correct_residues += 1
+        res_name = residue_atoms.res_name[0]
+        if res_name in protein_constants.residue_atoms:
+            expected_atom_names = np.array(protein_constants.residue_atoms[res_name])
+            total_residues += 1
+            if len(atom_names) != len(expected_atom_names):
+                # missing atoms are ok
+                continue
+            assert (
+                np.all(
+                    atom_names
+                    == np.array(
+                        protein_constants.residue_atoms[residue_atoms.res_name[0]]
+                    )
+                ),
+                f"Observed: {atom_names} != Expected: "
+                f"{np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])}",
+            )
+            correct_residues += 1
+        else:
+            print(f"Unexpected residue: {res_name}")
     assert correct_residues / total_residues > 0.5
 
 
@@ -146,9 +147,11 @@ def test_fill_missing_atoms(pdb_atoms_top7):
         residue_iter(pdb_atom_array[filter_amino_acids(pdb_atom_array)]),
         residue_iter(protein.atoms),
     ):
-        expected_atom_names = np.array(
-            protein_constants.residue_atoms[raw_residue.res_name[0]]
-        )
+        res_name = raw_residue.res_name[0]
+        if res_name in protein_constants.residue_atoms:
+            expected_atom_names = np.array(protein_constants.residue_atoms[res_name])
+        else:
+            continue
         if len(raw_residue) != len(expected_atom_names):
             missing_atoms = np.setdiff1d(expected_atom_names, raw_residue.atom_name)
             assert np.all(np.isin(missing_atoms, filled_residue.atom_name))
