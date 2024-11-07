@@ -26,6 +26,7 @@ from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 from bio_datasets import config as bio_config
 from bio_datasets.structure import (
     Biomolecule,
+    BiomoleculeComplex,
     ProteinChain,
     ProteinComplex,
     ProteinMixin,

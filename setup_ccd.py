@@ -237,12 +237,7 @@ if __name__ == "__main__":
     from bio_datasets.structure.residue import ResidueDictionary
 
     residue_dictionary = ResidueDictionary.from_ccd()
-    residue_dictionary.set_expected_relative_atom_indices_mapping()
-    expected_atom_indices_mapping = (
-        residue_dictionary._expected_relative_atom_indices_mapping
-    )
     residue_dictionary = asdict(residue_dictionary)
-    # residue_dictionary["_expected_relative_atom_indices_mapping"] = expected_atom_indices_mapping
     with open(OUTPUT_CCD.parent / "ccd_residue_dictionary.json", "w") as f:
         json.dump(residue_dictionary, f)
     logging.info(
