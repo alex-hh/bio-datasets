@@ -83,6 +83,28 @@ jobs:
         with:
           name: ccd_res_dict
           path: ./src/bio_datasets/structure/library/ccd_residue_dictionary.json
+      # in case it wasn't re-built: download everything
+      - name: Add internal CCD to bio_datasets
+        if: steps.cache-ccd.outputs.cache-hit == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ccd
+          path: src/bio_datasets/structure/library/
+
+      - name: Add internal CCD frequency file to bio_datasets
+        if: steps.cache-ccd.outputs.cache-hit == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ccd_freq
+          path: src/bio_datasets/structure/library/
+
+      - name: Add internal CCD residue dictionary to bio_datasets
+        if: steps.cache-ccd.outputs.cache-hit == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ccd_res_dict
+          path: src/bio_datasets/structure/library/
+
       - name: Test
         run: |
           pytest
