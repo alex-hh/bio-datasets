@@ -28,7 +28,9 @@ class BiomoleculeComplex(BaseBiomoleculeComplex):
     """A collection of biomolecules, each represented by its own class type.
 
     As well as providing access to molecule type-specific methods, this supports
-    use of different residue dictionaries for different molecule types.
+    use of different residue dictionaries for different molecule types, which
+    in turn, together with special classes, supports different methods and behaviours
+    for different molecule types.
 
     To enable this, the `category_to_res_dict_preset_name` argument should be used to
     specify the preset name of the residue dictionary to use for each chain category

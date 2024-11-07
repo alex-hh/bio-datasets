@@ -26,6 +26,7 @@ from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 from bio_datasets import config as bio_config
 from bio_datasets.structure import (
     Biomolecule,
+    BiomoleculeChain,
     BiomoleculeComplex,
     ProteinChain,
     ProteinComplex,
@@ -323,6 +324,8 @@ class AtomArrayFeature(CustomFeature):
         False  # when all atoms are present, we dont need to store atom name
     )
     decode: bool = True
+    load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
+    constructor_kwargs: Optional[Dict] = None
     coords_dtype: str = "float32"
     b_factor_is_plddt: bool = False
     b_factor_dtype: str = "float32"
@@ -647,7 +650,20 @@ class AtomArrayFeature(CustomFeature):
         for key, value in value.items():
             atoms.set_annotation(key, value)
 
-        return atoms
+        constructor_kwargs = self.constructor_kwargs or {}
+        if self.load_as == "biotite":
+            return atoms
+        elif self.load_as == "biomolecule":
+            residue_dict = self.residue_dictionary or ResidueDictionary.from_ccd_dict()
+            return Biomolecule(atoms, residue_dict, **constructor_kwargs)
+        elif self.load_as == "chain":
+            return BiomoleculeChain(atoms, residue_dict, **constructor_kwargs)
+        elif self.load_as == "complex":
+            return BiomoleculeComplex.from_atoms(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
+        else:
+            raise ValueError(f"Unsupported load_as: {self.load_as}")
 
 
 @dataclass
@@ -674,6 +690,8 @@ class StructureFeature(CustomFeature):
     - TODO: a Biopython structure object
     - TODO: a file handler or file contents string?
 
+    N.B. foldcomp only supports monomer protein chains - should we somehow enforce this?
+
     Args:
         decode (`bool`, defaults to `True`):
             Whether to decode the structure data. If `False`,
@@ -683,6 +701,8 @@ class StructureFeature(CustomFeature):
     requires_encoding: bool = True
     requires_decoding: bool = True
     decode: bool = True
+    load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
+    constructor_kwargs: dict = None
     id: Optional[str] = None
     with_occupancy: bool = False
     with_b_factor: bool = False
@@ -780,10 +800,22 @@ class StructureFeature(CustomFeature):
                 "Decoding is disabled for this feature. Please use Structure(decode=True) instead."
             )
 
-        array = load_structure_from_file_dict(
+        atoms = load_structure_from_file_dict(
             value, token_per_repo_id=token_per_repo_id, extra_fields=self.extra_fields
         )
-        return array
+        if self.load_as == "biotite":
+            return atoms
+        elif self.load_as == "biomolecule":
+            residue_dict = self.residue_dictionary or ResidueDictionary.from_ccd_dict()
+            return Biomolecule(atoms, residue_dict, **constructor_kwargs)
+        elif self.load_as == "chain":
+            return BiomoleculeChain(atoms, residue_dict, **constructor_kwargs)
+        elif self.load_as == "complex":
+            return BiomoleculeComplex.from_atoms(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
+        else:
+            raise ValueError(f"Unsupported load_as: {self.load_as}")
 
     def cast_storage(self, storage: pa.StructArray) -> pa.StructArray:
         if pa.types.is_struct(storage.type):
@@ -848,6 +880,18 @@ class StructureFeature(CustomFeature):
 
 @dataclass
 class ProteinStructureFeature(StructureFeature):
+    """Protein-specific structure feature.
+
+    Advantages of protein-specific features:
+    - we can enforce absence of any non-protein atoms,
+    - we can use protein-specific residue dictionaries,
+    - we can use protein-specific storage / compression formats,
+    - we can return a Protein-specific object.
+
+    TODO: improve foldcomp support - e.g. auto-compression of PDB files.
+    N.B. ignores load_as
+    """
+
     _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
 
     def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
@@ -867,16 +911,35 @@ class ProteinStructureFeature(StructureFeature):
         if atoms is None:
             return None
         # TODO: filter amino acids in encode_example also where possible
-        chain_ids = np.unique(atoms.chain_id)
-        if len(chain_ids) > 1:
-            return ProteinComplex.from_atoms(atoms)
-        return ProteinChain(atoms)
+        constructor_kwargs = self.constructor_kwargs or {}
+        if self.load_as == "biotite":
+            return atoms
+        elif self.load_as == "biomolecule":
+            raise ValueError(
+                "Returning biomolecule for protein-specific feature not supported."
+            )
+        elif self.load_as == "chain":
+            return ProteinChain(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
+        elif self.load_as == "complex":
+            return ProteinComplex.from_atoms(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
+        else:
+            raise ValueError(f"Unsupported load_as: {self.load_as}")
 
 
 @dataclass
 class ProteinAtomArrayFeature(AtomArrayFeature):
 
     """Decodes to a `bio_datasets.protein.Protein` or `bio_datasets.protein.ProteinComplex` object.
+
+    Advantages of protein-specific features:
+    - we can enforce absence of any non-protein atoms,
+    - we can use protein-specific residue dictionaries,
+    - we can use protein-specific storage / compression formats,
+    - we can return a Protein-specific object.
 
     Assumes standard set of amino acids for now.
 
@@ -970,13 +1033,23 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         atoms = super().decode_example(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
-        chain_ids = np.unique(atoms.chain_id)
-        if len(chain_ids) > 1:
-            assert (
-                not self.backbone_only
-            ), "Cannot drop sidechains for multi-chain proteins."
-            return ProteinComplex.from_atoms(atoms)
-        return ProteinChain(atoms, backbone_only=self.backbone_only)
+        constructor_kwargs = self.constructor_kwargs or {}
+        if self.load_as == "biotite":
+            return atoms
+        elif self.load_as == "biomolecule":
+            raise ValueError(
+                "Returning biomolecule for protein-specific feature not supported."
+            )
+        elif self.load_as == "chain":
+            return ProteinChain(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
+        elif self.load_as == "complex":
+            return ProteinComplex.from_atoms(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
+        else:
+            raise ValueError(f"Unsupported load_as: {self.load_as}")
 
 
 register_bio_feature(StructureFeature)
