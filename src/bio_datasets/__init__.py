@@ -10,7 +10,9 @@ import datasets
 ccd_path = Path(__file__).parent / "structure" / "library" / "components.bcif"
 from biotite.structure.info import set_ccd_path
 
-# use reprocessed ccd version which includes smiles descriptors
+assert (
+    ccd_path.exists()
+), f"CCD file not found at {ccd_path}, run setup_ccd.py to create it"
 set_ccd_path(ccd_path)
 
 from .features import *

@@ -1,4 +1,4 @@
-name: Publish Python distribution to pypi
+name: Test and Publish
 # based on https://github.com/biotite-dev/biotite/blob/main/.github/workflows/test-and-publish.yml
 # and https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
 # n.b. the second example automatically creates a release from a tag; we follow biotite in requiring a manual release

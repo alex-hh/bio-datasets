@@ -11,8 +11,6 @@ import numpy as np
 import requests
 from biotite.structure.io.pdbx import *
 
-from bio_datasets.structure.residue import ResidueDictionary
-
 OUTPUT_CCD = (
     Path(__file__).parent
     / "src"
@@ -232,6 +230,9 @@ if __name__ == "__main__":
     logging.info(f"Saved residue frequencies to {freq_path}")
 
     # Save residue dictionary
+    # import bio_datasets only after CCD has been created
+    from bio_datasets.structure.residue import ResidueDictionary
+
     residue_dictionary = ResidueDictionary.from_ccd()
     residue_dictionary.set_expected_relative_atom_indices_mapping()
     expected_atom_indices_mapping = (
