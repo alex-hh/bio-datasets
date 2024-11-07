@@ -57,8 +57,8 @@ jobs:
         if: steps.cache-ccd.outputs.cache-hit != 'true'
         run: |
           python setup_ccd.py
-      - name: Remove CCD used for hashing
-        run: rm components.cif.gz
+      - name: Remove unprocessed CCD
+        run: rm ./src/bio_datasets/structure/library/components.cif.gz
       - name: Install build backend
         run: pip install build
       - name: Build distribution
