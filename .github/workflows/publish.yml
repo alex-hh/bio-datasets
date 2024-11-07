@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          pip install -e .
       - name: Get current CCD for hashing
         run: wget -P ./src/bio_datasets/structure/library/ https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz
       - name: Get current CCD frequency file for hashing
