@@ -29,7 +29,7 @@ jobs:
   # we upload built wheel, ccd, and frequency file to internal storage
   # so that it can be reused in several CI jobs (via download-artifact)
   build-internal:
-    name: Build CCD and wheel for reusing it in several CI jobs
+    name: Build CCD and wheel
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,12 +53,12 @@ jobs:
         with:
           path: ./src/bio_datasets/structure/library/components.bcif
           key: cache-${{ hashFiles('setup_ccd.py') }}-${{ hashFiles('components.cif.gz') }}-${{ hashFiles('cc-counts.tdd') }}
-      - name: Remove CCD used for hashing
-        run: rm components.cif.gz
       - name: Build internal CCD
         if: steps.cache-ccd.outputs.cache-hit != 'true'
         run: |
           python setup_ccd.py
+      - name: Remove CCD used for hashing
+        run: rm components.cif.gz
       - name: Install build backend
         run: pip install build
       - name: Build distribution

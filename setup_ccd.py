@@ -39,18 +39,21 @@ def concatenate_ccd(categories=None):
         The compressed CCD in BinaryCIF format.
     """
 
-    logging.info("Download and read CCD...")
-    # ccd_cif_text = gzip.decompress(requests.get(CCD_URL).content).decode()
-    ccd_cif_text = gzip.decompress(
-        (
-            Path(__file__).parent
-            / "src"
-            / "bio_datasets"
-            / "structure"
-            / "library"
-            / "components.cif.gz"
-        ).read_bytes()
-    ).decode()
+    archive = (
+        Path(__file__).parent
+        / "src"
+        / "bio_datasets"
+        / "structure"
+        / "library"
+        / "components.cif.gz"
+    )
+    if not archive.exists():
+        logging.info(f"Downloading CCD from {CCD_URL}...")
+        ccd_cif_text = gzip.decompress(requests.get(CCD_URL).content).decode()
+    else:
+        logging.info("Reading downloaded CCD...")
+        ccd_cif_text = gzip.decompress(archive.read_bytes()).decode()
+
     ccd_file = CIFFile.read(StringIO(ccd_cif_text))
 
     compressed_block = BinaryCIFBlock()
