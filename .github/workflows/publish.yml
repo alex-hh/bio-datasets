@@ -44,7 +44,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install .
       - name: Get current CCD for hashing
-        run: wget https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz
+        run: wget -P ./src/bio_datasets/structure/library/ https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz
       - name: Get current CCD frequency file for hashing
         run: wget -P ./src/bio_datasets/structure/library/ http://ligand-expo.rcsb.org/dictionaries/cc-counts.tdd
       - name: Cache CCD

@@ -1,19 +1,24 @@
 import importlib
 import inspect
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, Optional
 
 import datasets
 
+logger = logging.getLogger(__name__)
+
 ccd_path = Path(__file__).parent / "structure" / "library" / "components.bcif"
 from biotite.structure.info import set_ccd_path
 
-assert (
-    ccd_path.exists()
-), f"CCD file not found at {ccd_path}, run setup_ccd.py to create it"
-set_ccd_path(ccd_path)
+if ccd_path.exists():
+    set_ccd_path(ccd_path)
+else:
+    logger.warning(
+        f"CCD file not found at {ccd_path}, SMILES support may not be available"
+    )
 
 from .features import *
 from .info import DatasetInfo
