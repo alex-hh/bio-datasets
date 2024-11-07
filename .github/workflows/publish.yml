@@ -83,35 +83,9 @@ jobs:
         with:
           name: ccd_res_dict
           path: ./src/bio_datasets/structure/library/ccd_residue_dictionary.json
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    needs:
-      - build-internal
-    steps:
-    - uses: actions/checkout@v4
-    - name: Add internal CCD to bio_datasets
-      uses: actions/download-artifact@v4
-      with:
-        name: ccd
-        path: src/bio_datasets/structure/library/
-
-    - name: Add internal CCD frequency file to bio_datasets
-      uses: actions/download-artifact@v4
-      with:
-        name: ccd_freq
-        path: src/bio_datasets/structure/library/
-
-    - name: Add internal CCD residue dictionary to bio_datasets
-      uses: actions/download-artifact@v4
-      with:
-        name: ccd_res_dict
-        path: src/bio_datasets/structure/library/
-
-    - name: Test
-      run: |
-        pytest
+      - name: Test
+        run: |
+          pytest
 
   sdist:
     name: Build source distribution for release

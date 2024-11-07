@@ -2,7 +2,8 @@
 
 This library is not intended to be a general-purpose library for protein structure analysis.
 We simply wrap Biotite's AtomArray and AtomArrayStack to offer a few convenience methods
-for dealing with protein structures in an ML context.
+for dealing with protein structures in an ML context; specifically exposing residue-level properties,
+including coordinates and distances.
 """
 import copy
 from dataclasses import dataclass
@@ -49,7 +50,10 @@ register_preset_res_dict(
 
 @dataclass
 class ProteinDictionary(ResidueDictionary):
-    """Defaults configure a dictionary with just the 20 standard amino acids"""
+    """Defaults configure a dictionary with just the 20 standard amino acids.
+
+    Supports OXT atoms, which generic residue dictionary does not currently.
+    """
 
     keep_oxt: bool = False
 
