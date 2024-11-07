@@ -2,7 +2,7 @@ import itertools
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from biotite import structure as bs
@@ -558,3 +558,130 @@ def get_residue_starts_mask(
     mask = np.zeros(len(atoms), dtype=bool)
     mask[residue_starts] = True
     return mask
+
+
+def create_complete_atom_array_from_restype_index(
+    restype_index: np.ndarray,
+    residue_dictionary: ResidueDictionary,
+    chain_id: Tuple[str, np.ndarray],
+    extra_fields: Optional[List[str]] = None,
+    res_id: Optional[np.ndarray] = None,
+    backbone_only: bool = False,
+    residue_index_offset: int = 0,
+):
+    """
+    Populate annotations from restype_index, assuming all atoms are present.
+    """
+    if isinstance(chain_id, np.ndarray):
+        assert len(chain_id) == len(restype_index)
+        unique_chain_ids = np.unique(chain_id)
+        chain_atom_arrays = []
+        chain_residue_starts = []
+        residue_starts_offset = 0
+        res_index_offset = 0
+        for single_chain_id in unique_chain_ids:
+            chain_mask = chain_id == single_chain_id
+            if res_id is not None:
+                chain_res_id = res_id[chain_mask]
+            else:
+                chain_res_id = None
+            (
+                atom_array,
+                residue_starts,
+                full_annot_names,
+            ) = create_complete_atom_array_from_restype_index(
+                restype_index=restype_index[chain_mask],
+                residue_dictionary=residue_dictionary,
+                chain_id=single_chain_id,
+                extra_fields=extra_fields,
+                backbone_only=backbone_only,
+                residue_index_offset=res_index_offset,
+                res_id=chain_res_id,
+            )
+            chain_atom_arrays.append(atom_array)
+            chain_residue_starts.append(residue_starts + residue_starts_offset)
+            residue_starts_offset += len(atom_array)
+            res_index_offset += atom_array.res_index.max() + 1
+
+        concatenated_array = sum(chain_atom_arrays, bs.AtomArray(length=0))
+        for key in atom_array._annot.keys():
+            if key not in concatenated_array._annot:
+                concatenated_array.set_annotation(
+                    key,
+                    np.concatenate([atoms._annot[key] for atoms in chain_atom_arrays]),
+                )
+        return (
+            concatenated_array,
+            np.concatenate(chain_residue_starts),
+            full_annot_names,
+        )
+    else:
+
+        if backbone_only:
+            residue_sizes = len(residue_dictionary.backbone_atoms) * len(restype_index)
+        else:
+            residue_sizes = residue_dictionary.get_residue_sizes(
+                restype_index, chain_id
+            )
+            # (n_residues,) NOT (n_atoms,)
+
+        residue_starts = np.concatenate(
+            [[0], np.cumsum(residue_sizes)[:-1]]
+        )  # (n_residues,)
+        new_atom_array = bs.AtomArray(length=np.sum(residue_sizes))
+        chain_id = np.full(len(new_atom_array), chain_id, dtype="U4")
+        new_atom_array.set_annotation(
+            "chain_id",
+            chain_id,
+        )
+        full_annot_names = [
+            "chain_id",
+        ]
+        residue_index = (
+            np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
+        )
+        relative_atom_index = (
+            np.arange(len(new_atom_array)) - residue_starts[residue_index]
+        )
+        atom_names = new_atom_array.atom_name
+        new_atom_array.set_annotation("restype_index", restype_index[residue_index])
+        atom_names = residue_dictionary.get_atom_names(
+            new_atom_array.restype_index, relative_atom_index, chain_id
+        )
+        new_atom_array.set_annotation("atom_name", atom_names)
+        new_atom_array.set_annotation(
+            "res_name",
+            np.array(residue_dictionary.residue_names)[new_atom_array.restype_index],
+        )
+
+        new_atom_array.set_annotation("chain_res_index", residue_index)
+        new_atom_array.set_annotation("res_index", residue_index + residue_index_offset)
+        if res_id is not None:
+            assert res_id.shape == restype_index.shape
+            new_atom_array.set_annotation("res_id", res_id[residue_index])
+        else:
+            new_atom_array.set_annotation("res_id", residue_index + 1)
+        new_atom_array.set_annotation(
+            "element", np.char.array(new_atom_array.atom_name).astype("U1")
+        )
+        new_atom_array.set_annotation(
+            "elemtype_index",
+            map_categories_to_indices(
+                new_atom_array.element, residue_dictionary.element_types
+            ),
+        )
+        full_annot_names += [
+            "atom_name",
+            "restype_index",
+            "elemtype_index",
+            "res_name",
+            "chain_res_index",
+            "res_index",
+            "res_id",
+        ]
+        if extra_fields is not None:
+            for f in extra_fields:
+                new_atom_array.add_annotation(
+                    f, dtype=float if f in ["occupancy", "b_factor"] else int
+                )
+        return new_atom_array, residue_starts, full_annot_names
