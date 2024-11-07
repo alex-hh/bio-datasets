@@ -493,7 +493,7 @@ class ResidueDictionary:
         chain_id: np.ndarray,
     ):
         restype_indices = np.unique(restype_index)
-        resnames = np.array(self.residue_names)[restype_indices]
+        resnames = list(np.array(self.residue_names)[restype_indices])
         # index relative to restype_indices of restype_index
         subset_restype_indices = np.searchsorted(restype_indices, restype_index)
         return self.standard_atoms_by_residue(resnames)[
