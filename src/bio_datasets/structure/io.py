@@ -1,7 +1,7 @@
 import gzip
 import os
 from os import PathLike
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 
@@ -99,15 +99,24 @@ def _load_cif_structure(
         "entity_id", atom_site["label_entity_id"].as_array(int, -1)
     )
 
-    processed_chain_atoms = []
-    if fill_missing_residues:
+    if not fill_missing_residues:
+        filled_structure = structure
+    else:
+        processed_chain_atoms = []
         entity_poly = block["entity_poly"]  # n.b. there's also pdbx_entity_nonpoly
+        poly_entity_ids = entity_poly["entity_id"].as_array(int, -1)
+        entity_ids = block["entity"]["id"].as_array(int, -1)
+        # process non-polymer entities
+        nonpoly_entity_mask = ~np.isin(entity_ids, poly_entity_ids)
+        nonpoly_entity_ids = entity_ids[nonpoly_entity_mask]
+        for entity_id in nonpoly_entity_ids:
+            processed_chain_atoms.append(structure[structure.entity_id == entity_id])
+        # process polymer entities
         entity_poly_seq = block["entity_poly_seq"]
-        chain_ids = entity_poly["pdbx_strand_id"].as_array(str)
-        entity_ids = entity_poly["entity_id"].as_array(int, -1)
+        poly_chain_ids = entity_poly["pdbx_strand_id"].as_array(str)
         residue_dict = ResidueDictionary.from_ccd_dict()
         # entity_types = entity_poly["type"].as_array("str")
-        for entity_chain_ids, entity_id in zip(chain_ids, entity_ids):
+        for entity_chain_ids, entity_id in zip(poly_chain_ids, poly_entity_ids):
             poly_seq_entity_mask = (
                 entity_poly_seq["entity_id"].as_array(int, -1) == entity_id
             )
@@ -215,15 +224,18 @@ def _load_cif_structure(
 
                     processed_chain_atoms.append(complete_atoms)
 
-    filled_structure = sum(processed_chain_atoms, bs.AtomArray(length=0))
-    for key in structure._annot.keys():
-        if key not in filled_structure._annot:
-            filled_structure.set_annotation(
-                key,
-                np.concatenate(
-                    [chain_atoms._annot[key] for chain_atoms in processed_chain_atoms]
-                ),
-            )
+        filled_structure = sum(processed_chain_atoms, bs.AtomArray(length=0))
+        for key in structure._annot.keys():
+            if key not in filled_structure._annot:
+                filled_structure.set_annotation(
+                    key,
+                    np.concatenate(
+                        [
+                            chain_atoms._annot[key]
+                            for chain_atoms in processed_chain_atoms
+                        ]
+                    ),
+                )
 
     if altloc == "occupancy":
         return filled_structure[

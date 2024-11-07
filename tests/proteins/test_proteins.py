@@ -1,7 +1,9 @@
 import numpy as np
 from biotite.structure.filter import filter_amino_acids
+from biotite.structure.io.pdbx import CIFFile, get_structure
 from biotite.structure.residues import residue_iter
 
+from bio_datasets.structure.io import load_structure
 from bio_datasets.structure.protein import ProteinChain
 from bio_datasets.structure.protein import constants as protein_constants
 
@@ -161,36 +163,72 @@ def test_fill_missing_atoms(pdb_atoms_top7):
 
 # n.b. filling missing residues is not yet implemented - would require
 # some decision on handling non-consecutive residue indices
-# def test_fill_missing_residues(pdb_atom_array_1aq1):
-#     """
-#     REMARK 465 MISSING RESIDUES
-#     REMARK 465 THE FOLLOWING RESIDUES WERE NOT LOCATED IN THE
-#     REMARK 465 EXPERIMENT. (M=MODEL NUMBER; RES=RESIDUE NAME; C=CHAIN
-#     REMARK 465 IDENTIFIER; SSSEQ=SEQUENCE NUMBER; I=INSERTION CODE.)
-#     REMARK 465
-#     REMARK 465   M RES C SSSEQI
-#     REMARK 465     ARG A    36
-#     REMARK 465     LEU A    37
-#     REMARK 465     ASP A    38
-#     REMARK 465     THR A    39
-#     REMARK 465     GLU A    40
-#     REMARK 465     THR A    41
-#     REMARK 465     GLU A    42
-#     REMARK 465     GLY A    43
-#     REMARK 465     ALA A   149
-#     REMARK 465     ARG A   150
-#     REMARK 465     ALA A   151
-#     REMARK 465     PHE A   152
-#     REMARK 465     GLY A   153
-#     REMARK 465     VAL A   154
-#     REMARK 465     PRO A   155
-#     REMARK 465     VAL A   156
-#     REMARK 465     ARG A   157
-#     REMARK 465     THR A   158
-#     REMARK 465     TYR A   159
-#     REMARK 465     THR A   160
-#     REMARK 465     HIS A   161
-#     REMARK 500
-#     """
-#     # 1aq1 has missing residues
-#     pass
+def test_fill_missing_residues(cif_file_1aq1):
+    """
+    REMARK 465 MISSING RESIDUES
+    REMARK 465 THE FOLLOWING RESIDUES WERE NOT LOCATED IN THE
+    REMARK 465 EXPERIMENT. (M=MODEL NUMBER; RES=RESIDUE NAME; C=CHAIN
+    REMARK 465 IDENTIFIER; SSSEQ=SEQUENCE NUMBER; I=INSERTION CODE.)
+    REMARK 465
+    REMARK 465   M RES C SSSEQI
+    REMARK 465     ARG A    36
+    REMARK 465     LEU A    37
+    REMARK 465     ASP A    38
+    REMARK 465     THR A    39
+    REMARK 465     GLU A    40
+    REMARK 465     THR A    41
+    REMARK 465     GLU A    42
+    REMARK 465     GLY A    43
+    REMARK 465     ALA A   149
+    REMARK 465     ARG A   150
+    REMARK 465     ALA A   151
+    REMARK 465     PHE A   152
+    REMARK 465     GLY A   153
+    REMARK 465     VAL A   154
+    REMARK 465     PRO A   155
+    REMARK 465     VAL A   156
+    REMARK 465     ARG A   157
+    REMARK 465     THR A   158
+    REMARK 465     TYR A   159
+    REMARK 465     THR A   160
+    REMARK 465     HIS A   161
+    REMARK 500
+    """
+    #     # 1aq1 has missing residues
+    atoms = load_structure(cif_file_1aq1, fill_missing_residues=True)
+    nanmask = np.isnan(atoms.coord).any(axis=-1)
+    missing_res_ids = np.unique(atoms.res_id[nanmask])
+    expected_missing_res_ids = np.array(
+        [
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            149,
+            150,
+            151,
+            152,
+            153,
+            154,
+            155,
+            156,
+            157,
+            158,
+            159,
+            160,
+            161,
+        ]
+    )
+    assert np.all(missing_res_ids == expected_missing_res_ids)
+
+    # check that we load all the atoms.
+    default_atoms = get_structure(
+        CIFFile.read(cif_file_1aq1), use_author_fields=False, model=1
+    )
+    # n.b. order will be different
+    assert len(default_atoms) + nanmask.sum() == len(atoms)
+    # TODO: also check that unique chain ids etc are the same
