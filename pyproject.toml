@@ -3,8 +3,8 @@ requires = ["poetry-core>=1.0.0"]  # Use poetry-core for build-system requiremen
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "bio_datasets"
-version = "0.0.1"
+name = "biodatasets"
+version = "0.1.0"
 description = "Fast, convenient and shareable datasets for BioML"
 authors = [
     "Alex Hawkins-Hooker",
