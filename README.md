@@ -16,11 +16,16 @@ The best format for storing data is typically not the most convenient format for
 
 The main formats we support for storing and loading biomolecular structure data are:
 
+| Feature name |   Storage format    |  Loaded as  (controlled by `load_as` feature kwarg) |
+| ------------ | --------------------| ------------------------------------------------|
+|  AtomArrayFeature  | arrays of cartesian internal coordinates and annotations | `biotite.structure.AtomArray` (default) / `bio_datasets.BiomoleculeChain` / `bio_datasets.BiomoleculeComplex`  (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
+|  StructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF | `biotite.structure.AtomArray` / `bio_datasets.BiomoleculeChain` / `bio_datasets.BiomoleculeComplex` |
 
-| Feature name |   Storage format    |  Loaded as  |
-| ------------ | --------------------| ------------|
-|  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
-|  StructureFeature / ProteinStructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
+We also provide protein-specific versions of these features for protein structure data, supporting protein-specific storage formats (like foldcomp) and loaded python objects:
+
+| Feature name | Storage format | Loaded as |
+| ProteinAtomArrayFeature | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (default)|
+| ProteinStructureFeature | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.structure.AtomArray` / `bio_dataasets.ProteinCahin` / `bio_datasets.ProteinComplex` (default) |
 
 
 ## Installation with pip
