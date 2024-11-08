@@ -501,6 +501,7 @@ class ResidueDictionary:
         relative_atom_index: np.ndarray,
         chain_id: np.ndarray,
     ):
+        # chain_id is used by ProteinDictionary -- TODO: maybe just accept atoms directly
         restype_indices = np.unique(restype_index)
         resnames = list(np.array(self.residue_names)[restype_indices])
         # index relative to restype_indices of restype_index
@@ -689,7 +690,6 @@ def create_complete_atom_array_from_restype_index(
             new_atom_array.restype_index, relative_atom_index, chain_id
         )
         new_atom_array.set_annotation("element", elements)
-        print("Inferring element types", new_atom_array.element)
         new_atom_array.set_annotation(
             "elemtype_index",
             map_categories_to_indices(
