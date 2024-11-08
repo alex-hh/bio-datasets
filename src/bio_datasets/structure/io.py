@@ -51,7 +51,7 @@ def is_open_compatible(file):
 
 def _load_cif_structure(
     fpath_or_handler,
-    file_format,
+    file_type,
     model=1,
     extra_fields=None,
     fill_missing_residues=False,
@@ -73,7 +73,7 @@ def _load_cif_structure(
     Would be good to write some generic residue mapping utilites to allow this.
     """
     # we use filter_altloc all to make it easier to get the chain id mapping
-    if file_format == "cif":
+    if file_type == "cif":
         pdbxf = pdbx.CIFFile.read(fpath_or_handler)
     else:
         pdbxf = pdbx.BinaryCIFFile.read(fpath_or_handler)
@@ -297,7 +297,7 @@ def _load_foldcomp_structure(
 
 def load_structure(
     fpath_or_handler,
-    file_format: Optional[str] = None,
+    file_type: Optional[str] = None,
     model: int = 1,
     extra_fields=None,
     fill_missing_residues=False,
@@ -314,43 +314,43 @@ def load_structure(
     if isinstance(fpath_or_handler, (str, PathLike)) and fpath_or_handler.endswith(
         ".gz"
     ):
-        file_format = os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
+        file_type = os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
         # https://github.com/biotite-dev/biotite/issues/193
         with gzip.open(fpath_or_handler, "rt") as f:
             return load_structure(
                 f,
-                file_format=file_format,
+                file_type=file_type,
                 model=model,
                 extra_fields=extra_fields,
                 fill_missing_residues=fill_missing_residues,
             )
 
-    if file_format is None and isinstance(fpath_or_handler, (str, PathLike)):
-        file_format = os.path.splitext(fpath_or_handler)[1][1:]
+    if file_type is None and isinstance(fpath_or_handler, (str, PathLike)):
+        file_type = os.path.splitext(fpath_or_handler)[1][1:]
     assert (
-        file_format is not None
+        file_type is not None
     ), "Format must be specified if fpath_or_handler is not a path"
 
-    file_format = FILE_TYPE_TO_EXT[file_format]
+    file_type = FILE_TYPE_TO_EXT[file_type]
     if fill_missing_residues:
-        assert file_format in [
+        assert file_type in [
             "cif",
             "bcif",
         ], "Fill missing residues only supported for cif files"
 
-    if file_format in ["cif", "bcif"]:
+    if file_type in ["cif", "bcif"]:
         return _load_cif_structure(
-            fpath_or_handler, file_format, model, extra_fields, fill_missing_residues
+            fpath_or_handler, file_type, model, extra_fields, fill_missing_residues
         )
 
-    elif file_format == "pdb":
+    elif file_type == "pdb":
         return _load_pdb_structure(
             fpath_or_handler,
             model=model,
             extra_fields=extra_fields,
             fill_missing_residues=fill_missing_residues,
         )
-    elif file_format == "fcz":
+    elif file_type == "fcz":
         return _load_foldcomp_structure(
             fpath_or_handler,
             model=model,
@@ -358,4 +358,4 @@ def load_structure(
             fill_missing_residues=fill_missing_residues,
         )
     else:
-        raise ValueError(f"Unsupported file format: {file_format}")
+        raise ValueError(f"Unsupported file format: {file_type}")

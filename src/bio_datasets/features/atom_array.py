@@ -183,7 +183,7 @@ def load_structure_from_file_dict(
             if is_local_path(path):
                 atom_array = load_structure(
                     path,
-                    format=file_type,
+                    file_format=file_type,
                     extra_fields=extra_fields,
                 )
             else:
@@ -202,7 +202,7 @@ def load_structure_from_file_dict(
                 with xopen(path, "r", download_config=download_config) as f:
                     atom_array = load_structure(
                         f,
-                        format=file_type or "pdb",
+                        file_type=file_type or "pdb",
                         extra_fields=extra_fields,
                     )
 
@@ -215,12 +215,10 @@ def load_structure_from_file_dict(
             elif file_type == "cif":
                 fhandler = StringIO(bytes_.decode())
             else:
-                raise ValueError(
-                    f"Unsupported file format: {file_type} for bytes input"
-                )
+                raise ValueError(f"Unsupported file type: {file_type} for bytes input")
             atom_array = load_structure(
                 fhandler,
-                format=file_type,
+                file_type=file_type,
                 extra_fields=extra_fields,
             )
         else:

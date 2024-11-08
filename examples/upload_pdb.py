@@ -1,5 +1,14 @@
-"""We upload assemblies, which contain atoms for PDB entries in correct oligomeric state, and no unnecessary experimental info.
+"""We upload asymmetric units.
 
+Ultimately what we want to be able to do is to infer the assembly from the coordinates for a single repeating unit.
+
+Q. how do I download in binary cif format? https://molstar.org/docs/data-access-tools/convert-to-bcif/
+
+TODO: explicitly store gzipped bytes, and support decompression on the fly
+And use biotite's compress util.
+And maybe just delete unnecessary blocks...
+
+https://pdbsnapshots.s3.us-west-2.amazonaws.com/index.html#20240101/pub/pdb/data/structures/divided/mmCIF/
 https://pdbsnapshots.s3.us-west-2.amazonaws.com/index.html#20240101/pub/pdb/data/assemblies/mmCIF/divided/aq/
 """
 import argparse
