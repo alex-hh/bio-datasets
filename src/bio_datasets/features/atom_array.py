@@ -59,23 +59,6 @@ def element_from_atom_name(atom_name: np.ndarray, molecule_type: np.ndarray):
     raise NotImplementedError()
 
 
-def filter_chains(structure, chain_ids):
-    # TODO: double-check numeric chain id is ok...
-    all_chains = get_chains(structure)
-    if len(all_chains) == 0:
-        raise ValueError("No chains found in the input file.")
-    if chain_ids is None:
-        return structure
-    if isinstance(chain_ids, str):
-        chain_ids = [chain_ids]
-    for chain in chain_ids:
-        if chain not in all_chains:
-            raise ValueError(f"Chain {chain} not found in input file")
-    chain_filter = [a.chain_id in chain_ids for a in structure]
-    structure = structure[chain_filter]
-    return structure
-
-
 def infer_bytes_format(b: bytes) -> str:
     """
     Infer the file format of a bytes object from its contents.
