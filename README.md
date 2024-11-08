@@ -32,7 +32,7 @@ We also provide protein-specific versions of these features for protein structur
 ## Installation with pip
 
 ```bash
-pip install biodatasets
+pip install datasets-bio
 ```
 
 ## Usage
