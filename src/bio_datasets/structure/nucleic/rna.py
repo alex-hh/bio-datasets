@@ -2,7 +2,11 @@ from typing import Optional
 
 from biotite import structure as bs
 
-from bio_datasets.structure.residue import ResidueDictionary, register_preset_res_dict
+from bio_datasets.structure.residue import (
+    ResidueDictionary,
+    get_all_residue_names,
+    register_preset_res_dict,
+)
 
 from .nucleic import NucleotideChain, residue_atoms, residue_elements, rna_nucleotides
 
@@ -27,6 +31,13 @@ backbone_atoms = [
 
 register_preset_res_dict(
     "rna", residue_names=rna_nucleotides, backbone_atoms=backbone_atoms
+)
+
+register_preset_res_dict(
+    "rna_all",
+    residue_names=get_all_residue_names("rna"),
+    backbone_atoms=backbone_atoms,
+    unknown_residue_name="UNK",
 )
 
 

@@ -144,6 +144,19 @@ def get_res_categories(res_name: np.ndarray):
     return unique_categories[unique_restype_indices]
 
 
+def get_all_residue_names(category: str):
+    assert category in [
+        "protein",
+        "dna",
+        "rna",
+        "small_molecule",
+        "carbohydrate",
+    ], f"Unsupported molecule category {category}"
+    return sorted(
+        res for res, cat in CHEM_COMPONENT_CATEGORIES.items() if cat == category
+    )
+
+
 # TODO: support inferring chirality from residue name
 @dataclass
 class ResidueDictionary:

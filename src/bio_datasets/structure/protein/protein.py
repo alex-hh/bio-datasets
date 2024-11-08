@@ -18,7 +18,11 @@ from bio_datasets.structure.biomolecule import (
     BiomoleculeChain,
 )
 from bio_datasets.structure.protein import constants as protein_constants
-from bio_datasets.structure.residue import ResidueDictionary, register_preset_res_dict
+from bio_datasets.structure.residue import (
+    ResidueDictionary,
+    get_all_residue_names,
+    register_preset_res_dict,
+)
 
 from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
 
@@ -45,6 +49,14 @@ register_preset_res_dict(
             "element_swaps": [("SE", "S")],
         },
     ],
+)
+
+
+register_preset_res_dict(
+    "protein_all",
+    residue_names=get_all_residue_names("protein"),
+    backbone_atoms=["N", "CA", "C", "O"],
+    unknown_residue_name="UNK",
 )
 
 
