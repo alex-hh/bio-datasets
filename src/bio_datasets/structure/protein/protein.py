@@ -219,10 +219,8 @@ class ProteinMixin:
 
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
         assert all(
-            [
-                atom in self.residue_dictionary.backbone_atoms + ["CB"]
-                for atom in atom_names
-            ]
+            atom in self.residue_dictionary.backbone_atoms + ["CB"]
+            for atom in atom_names
         ), f"Invalid entries in atom names: {atom_names}"
         coords = super().backbone_coords([at for at in atom_names if at != "CB"])
         if "CB" in atom_names:
@@ -243,7 +241,7 @@ class ProteinMixin:
         assert (
             self.residue_dictionary.atom14_compatible
             and self.residue_dictionary.atom37_compatible
-        ), "Atom14 representation assumes use of standard amino acid dictionary"
+        ), "Atom14 representation assumes use of standard amino acid dictionary"  # noqa: PT018
         atom14_coords = np.full((len(self.num_residues), 14, 3), np.nan)
         atom14_index = RESTYPE_ATOM37_TO_ATOM14[
             self.atoms.residue_index, self.atoms.atom37_index

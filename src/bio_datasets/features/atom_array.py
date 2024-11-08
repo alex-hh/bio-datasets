@@ -15,6 +15,7 @@ import pyarrow as pa
 from biotite import structure as bs
 from biotite.structure import get_chains
 from biotite.structure.filter import filter_amino_acids
+from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 from datasets import Array1D, Array2D, config
 from datasets.download import DownloadConfig
@@ -35,7 +36,7 @@ from bio_datasets.structure import (
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
-from bio_datasets.structure.io import load_structure
+from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein import ProteinDictionary
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts_mask
@@ -71,8 +72,9 @@ def infer_bytes_format(b: bytes) -> str:
 
 
 def protein_atom_array_from_dict(
-    d: dict, backbone_atoms: List[str] = ["N", "CA", "C", "O"]
+    d: Dict, backbone_atoms: Optional[List[str]] = None
 ) -> bs.AtomArray:
+    backbone_atoms = backbone_atoms or ["N", "CA", "C", "O"]
     sequence = d["sequence"]
     annots_keys = [k for k in d.keys() if k in extra_annots]
     if "backbone_coords" in d:
@@ -119,9 +121,9 @@ def encode_biotite_atom_array(
 
     TODO: support foldcomp encoding
     """
-    pdb = pdb.PDBFile()
-    pdb.set_structure(array)
-    contents = "\n".join(pdb.lines) + "\n"
+    pdbf = PDBFile()
+    pdbf.set_structure(array)
+    contents = "\n".join(pdbf.lines) + "\n"
     if encode_with_foldcomp:
         import foldcomp
 
@@ -280,7 +282,6 @@ class AtomArrayFeature(CustomFeature):
     with_atom_id: bool = False
     with_charge: bool = False
     with_ins_code: bool = False
-    id: Optional[str] = None
     # Automatically constructed
     _type: str = field(
         default="AtomArrayFeature", init=False, repr=False
@@ -410,10 +411,10 @@ class AtomArrayFeature(CustomFeature):
                     value, extra_fields=self.extra_fields
                 )
                 return self._encode_example(struct)
-            if all([attr in value for attr in self.required_keys]):
+            if all(attr in value for attr in self.required_keys):
                 return value
             else:
-                raise ValueError(f"Expected keys bytes/path/type in dict")
+                raise ValueError("Expected keys bytes/path/type in dict")
         elif isinstance(value, bs.AtomArray):
             if self.all_atoms_present and not is_standardised:
                 assert self.residue_dictionary is not None
@@ -467,7 +468,8 @@ class AtomArrayFeature(CustomFeature):
                         atom_array_struct[attr] = getattr(value, attr)
             if self.with_bonds:
                 bonds_array = value.bond_list.as_array()
-                assert bonds_array.ndim == 2 and bonds_array.shape[1] == 3
+                assert bonds_array.ndim == 2
+                assert bonds_array.shape[1] == 3
                 atom_array_struct["bond_edges"] = bonds_array[:, :2]
                 atom_array_struct["bond_types"] = bonds_array[:, 2]
             return atom_array_struct
@@ -557,8 +559,8 @@ class AtomArrayFeature(CustomFeature):
             atoms.bond_list = bonds
 
         # anything left in value is an atom-level annotation
-        for key, value in value.items():
-            atoms.set_annotation(key, value)
+        for key, val in value.items():
+            atoms.set_annotation(key, val)
         return atoms
 
     def _decode_example(
@@ -619,7 +621,6 @@ class StructureFeature(CustomFeature):
     decode: bool = True
     load_as: str = "biotite"  # biomolecule or chain or complex or biotite; if chain must be monomer
     constructor_kwargs: dict = None
-    id: Optional[str] = None
     with_occupancy: bool = False
     with_b_factor: bool = False
     with_atom_id: bool = False
@@ -654,16 +655,32 @@ class StructureFeature(CustomFeature):
             extra_fields.append("charge")
         return extra_fields
 
+    def _encode_dict(self, value: dict) -> dict:
+        file_type = infer_type_from_structure_file_dict(value)
+        if value.get("path") is not None and os.path.isfile(value["path"]):
+            path = value["path"]
+            # we set "bytes": None to not duplicate the data if they're already available locally
+            # (this assumes invocation in what context?)
+            return {"bytes": None, "path": path, "type": file_type or "pdb"}
+        elif value.get("bytes") is not None or value.get("path") is not None:
+            # store the Structure bytes, and path is optionally used to infer the Structure format using the file extension
+            path = value.get("path")
+            return {"bytes": value.get("bytes"), "path": path, "type": file_type}
+        else:
+            raise ValueError(
+                f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
+            )
+
     def _encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
         """Encode example into a format for Arrow.
 
         This determines what gets written to the Arrow file.
         """
         if isinstance(value, str):
-            return {"path": value, "bytes": None, "type": file_type}
+            return self._encode_dict({"path": value})
         elif isinstance(value, bytes):
             # just assume pdb format for now
-            return {"path": None, "bytes": value, "type": file_type}
+            return self._encode_dict({"bytes": value})
         elif isinstance(value, bs.AtomArray):
             if self.load_as == "chain":
                 chain_ids = np.unique(value.chain_id)
@@ -679,20 +696,7 @@ class StructureFeature(CustomFeature):
                 "type": "pdb" if not self.encode_with_foldcomp else "fcz",
             }
         elif isinstance(value, dict):
-            file_type = infer_type_from_structure_file_dict(value)
-            if value.get("path") is not None and os.path.isfile(value["path"]):
-                path = value["path"]
-                # we set "bytes": None to not duplicate the data if they're already available locally
-                # (this assumes invocation in what context?)
-                return {"bytes": None, "path": path, "type": file_type or "pdb"}
-            elif value.get("bytes") is not None or value.get("path") is not None:
-                # store the Structure bytes, and path is optionally used to infer the Structure format using the file extension
-                path = value.get("path")
-                return {"bytes": value.get("bytes"), "path": path, "type": file_type}
-            else:
-                raise ValueError(
-                    f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
-                )
+            return self._encode_dict(value)
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
 

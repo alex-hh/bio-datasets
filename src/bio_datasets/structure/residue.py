@@ -97,11 +97,12 @@ CHEMICAL_TYPES = ["NON-POLYMER", "OTHER", "PEPTIDE-LIKE"]
 
 RES_NAMES = get_ccd()["chem_comp"]["id"].as_array()
 
+
 # we dont store these in memory bc too large
 def get_component_types():
     ccd_data = get_ccd()
     res_types = ccd_data["chem_comp"]["type"].as_array()
-    return {name: type for name, type in zip(RES_NAMES, res_types)}
+    return dict(zip(RES_NAMES, res_types))
 
 
 def get_component_categories(chem_component_types: Dict[str, str]):
@@ -180,8 +181,8 @@ class ResidueDictionary:
             self.residue_names
         ), "Duplicate residue names"
         # TODO: assert backbone_atoms are in correct order
-        assert all([res in self.residue_atoms for res in self.residue_names])
-        assert all([res in self.residue_elements for res in self.residue_names])
+        assert all(res in self.residue_atoms for res in self.residue_names)
+        assert all(res in self.residue_elements for res in self.residue_names)
         for res, ats in self.residue_atoms.items():
             if len(ats) == 0:
                 print("Warning: zero atoms for residue", res)
@@ -209,7 +210,7 @@ class ResidueDictionary:
         minimum_pdb_entries: int = 1,  # ligands might often be unique - arguably res dict not that useful for these cases?
         **kwargs,
     ):
-        """Hydrogens and OXT are not included in the pre-built dictionary"""
+        """Hydrogens and OXT are not included in the pre-built dictionary."""
         ccd_dict = get_ccd_dict()
         frequencies = get_residue_frequencies()
 
@@ -218,27 +219,26 @@ class ResidueDictionary:
         if ccd_dict.get("residue_letters") is None:
             res_letter_mapping = get_component_3to1()
             res_letters = [res_letter_mapping[res] for res in res_names]
-            assert all(
-                [res_letter for res_letter in res_letters]
-            )  # unknown types are ?
+            assert all(res_letter for res_letter in res_letters)  # unknown types are ?
         else:
             res_letters = ccd_dict["residue_letters"]
 
-        if category is not None:
-            assert category in [
-                "protein",
-                "dna",
-                "rna",
-                "saccharide",
-                "small_molecule",
-            ], f"Unknown category: {category}"
+        assert category in [
+            "protein",
+            "dna",
+            "rna",
+            "saccharide",
+            "small_molecule",
+            None,
+        ], f"Unknown category: {category}"
 
         def keep_res(res_name):
             res_filter = frequencies.get(res_name, 0) >= minimum_pdb_entries
-            if residue_names is not None:
-                res_filter = res_filter and res_name in residue_names
-            if category is not None:
-                res_filter = res_filter and res_categories[res_name] == category
+            res_filter = (
+                res_filter
+                and (residue_names is None or res_name in residue_names)
+                and (category is None or res_categories[res_name] == category)
+            )
             return res_filter
 
         selected_res_names = []
@@ -250,7 +250,7 @@ class ResidueDictionary:
         res_names = selected_res_names
         res_letters = selected_res_letters
 
-        categories = set([res_categories[res] for res in res_names])
+        categories = {res_categories[res] for res in res_names}
         if backbone_atoms is not None:
             assert (
                 len(categories) == 1
@@ -260,13 +260,8 @@ class ResidueDictionary:
         residue_elements = {res: ccd_dict["residue_elements"][res] for res in res_names}
         residue_categories = {res: res_categories[res] for res in res_names}
 
-        element_types = list(
-            sorted(list(set(itertools.chain(*residue_elements.values()))))
-        )
-        if atom_types is None:
-            atom_types = list(
-                sorted(list(set(itertools.chain(*residue_atoms.values()))))
-            )
+        element_types = sorted(set(itertools.chain(*residue_elements.values())))
+        atom_types = atom_types or sorted(set(itertools.chain(*residue_atoms.values())))
 
         return cls(
             residue_names=res_names,
@@ -306,49 +301,33 @@ class ResidueDictionary:
         frequencies = get_residue_frequencies()
         res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array(str))
 
-        res_names = [
-            res for res in res_names if frequencies.get(res, 0) >= minimum_pdb_entries
-        ]
-        if not keep_hydrogens:
-            res_names = [
-                res for res in res_names if res != "H" and res != "D" and res != "D8U"
-            ]
-        if residue_names is not None:
-            res_names = [res for res in res_names if res in residue_names]
-        if category is not None:
-            assert category in [
-                "protein",
-                "dna",
-                "rna",
-                "carbohydrate",
-                "small_molecule",
-            ], f"Unknown category: {category}"
-            mask = np.array(
-                [chem_component_categories[name] == category for name in res_names]
+        def keep_res(res_name):
+            res_filter = frequencies.get(res_name, 0) >= minimum_pdb_entries
+            res_filter = (
+                res_filter
+                and (residue_names is None or res_name in residue_names)
+                and (
+                    category is None or chem_component_categories[res_name] == category
+                )
             )
-            res_names = list(res_names[mask])
-        else:
-            categories = list(
-                set([chem_component_categories[name] for name in res_names])
+            res_filter = res_filter and (
+                keep_hydrogens or res_name not in ["H", "D", "D8U"]
             )
+            return res_filter
 
+        res_names = [res for res in res_names if keep_res(res)]
+        categories = {chem_component_categories[name] for name in res_names}
         res_letters = [chem_component_3to1[name] for name in res_names]
         res_categories = {name: chem_component_categories[name] for name in res_names}
-        assert all([res_letter for res_letter in res_letters])
-
-        if backbone_atoms is not None:
-            assert (
-                len(categories) == 1
-            ), "Backbone atoms only supported for single category dictionaries"
+        assert all(res_letter for res_letter in res_letters)
+        assert (
+            backbone_atoms is None or len(categories) == 1
+        ), "Backbone atoms only supported for single category dictionaries"
 
         res_atom_names = {}
         res_element_types = {}
         chem_comp_atom = ccd_data["chem_comp_atom"]
-        for (
-            name
-        ) in (
-            res_names
-        ):  # TODO: is this an inefficient loop? We can just load the full table and filter as required...
+        for name in res_names:
             res_mask = chem_comp_atom["comp_id"].as_array(str) == name
             assert np.any(res_mask), f"No atoms found for residue {name}"
             res_elements_arr = chem_comp_atom["type_symbol"].as_array(str)[res_mask]
@@ -364,10 +343,8 @@ class ResidueDictionary:
             res_atom_names[name] = list(res_atom_names_arr[mask])
             res_element_types[name] = list(res_elements_arr[mask])
 
-        element_types = list(
-            sorted(list(set(itertools.chain(*res_element_types.values()))))
-        )
-        atom_types = list(sorted(list(set(itertools.chain(*res_atom_names.values())))))
+        element_types = sorted(set(itertools.chain(*res_element_types.values())))
+        atom_types = sorted(set(itertools.chain(*res_atom_names.values())))
         return cls(
             residue_names=list(res_names),
             residue_letters=res_letters,

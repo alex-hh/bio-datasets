@@ -3,7 +3,7 @@ from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdbx import CIFFile, get_structure
 from biotite.structure.residues import residue_iter
 
-from bio_datasets.structure.io import load_structure
+from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein import ProteinChain
 from bio_datasets.structure.protein import constants as protein_constants
 
