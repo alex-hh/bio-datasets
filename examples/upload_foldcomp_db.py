@@ -12,7 +12,7 @@ import foldcomp
 from bio_datasets import Dataset, Features, NamedSplit, Value
 from bio_datasets.features import ProteinAtomArrayFeature, ProteinStructureFeature
 from bio_datasets.features.atom_array import load_structure
-from bio_datasets.structure import ProteinChain, ProteinDictionary
+from bio_datasets.structure import ProteinChain
 
 
 def examples_generator(
