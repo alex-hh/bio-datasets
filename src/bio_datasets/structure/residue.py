@@ -437,6 +437,7 @@ class ResidueDictionary:
         assert self.element_types is not None
         return len(self.element_types)
 
+    # TODO: would be good to cache but cant cache list arg.
     def standard_atoms_by_residue(self, resnames: Optional[List[str]] = None):
         """Return a fixed size array of atom names for each residue type.
 
@@ -450,6 +451,14 @@ class ResidueDictionary:
         for ix, residue_name in enumerate(resnames):
             residue_atoms = self.residue_atoms[residue_name]
             arr[ix, : len(residue_atoms)] = residue_atoms
+        return arr
+
+    def standard_elements_by_residue(self, resnames: Optional[List[str]] = None):
+        resnames = resnames or self.residue_names
+        arr = np.full((len(resnames), self.max_residue_size), "", dtype="U6")
+        for ix, residue_name in enumerate(resnames):
+            residue_elements = self.residue_elements[residue_name]
+            arr[ix, : len(residue_elements)] = residue_elements
         return arr
 
     def get_residue_sizes(
@@ -497,6 +506,21 @@ class ResidueDictionary:
         # index relative to restype_indices of restype_index
         subset_restype_indices = np.searchsorted(restype_indices, restype_index)
         return self.standard_atoms_by_residue(resnames)[
+            subset_restype_indices,
+            relative_atom_index,
+        ]
+
+    def get_elements(
+        self,
+        restype_index: np.ndarray,
+        relative_atom_index: np.ndarray,
+        chain_id: np.ndarray,
+    ):
+        restype_indices = np.unique(restype_index)
+        resnames = list(np.array(self.residue_names)[restype_indices])
+        # index relative to restype_indices of restype_index
+        subset_restype_indices = np.searchsorted(restype_indices, restype_index)
+        return self.standard_elements_by_residue(resnames)[
             subset_restype_indices,
             relative_atom_index,
         ]
@@ -661,9 +685,11 @@ def create_complete_atom_array_from_restype_index(
             new_atom_array.set_annotation("res_id", res_id[residue_index])
         else:
             new_atom_array.set_annotation("res_id", residue_index + 1)
-        new_atom_array.set_annotation(
-            "element", np.char.array(new_atom_array.atom_name).astype("U1")
+        elements = residue_dictionary.get_elements(
+            new_atom_array.restype_index, relative_atom_index, chain_id
         )
+        new_atom_array.set_annotation("element", elements)
+        print("Inferring element types", new_atom_array.element)
         new_atom_array.set_annotation(
             "elemtype_index",
             map_categories_to_indices(

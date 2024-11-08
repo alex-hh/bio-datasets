@@ -334,9 +334,6 @@ class AtomArrayFeature(CustomFeature):
     coords_dtype: str = "float32"
     b_factor_is_plddt: bool = False
     b_factor_dtype: str = "float32"
-    chain_id: Optional[
-        str
-    ] = None  # single chain id - means we will intepret structure as a single chain
     with_element: bool = True
     with_box: bool = False
     with_bonds: bool = False
@@ -362,7 +359,10 @@ class AtomArrayFeature(CustomFeature):
         features = [
             ("coords", Array2D((None, 3), self.coords_dtype)),
             residue_identifier,
-            ("chain_id", Array1D((None,), "string")),
+            (
+                "chain_id",
+                Array1D((None,), "string"),
+            ),  # TODO: could make Value(string) if load_as == "chain"
         ]
         if not self.all_atoms_present:
             features.append(("atom_name", Array1D((None,), "string")))
@@ -399,6 +399,8 @@ class AtomArrayFeature(CustomFeature):
             ), "residue_dictionary is required when all_atoms_present is True"
         self.deserialize()
         self._features = self._make_features_dict()
+        if not self.with_element and not self.all_atoms_present:
+            raise ValueError("with_element must be True if all_atoms_present is False")
 
     def __call__(self):
         return get_nested_type(self._features)
@@ -506,10 +508,7 @@ class AtomArrayFeature(CustomFeature):
             if not self.all_atoms_present:
                 atom_array_struct["residue_starts"] = residue_starts
                 atom_array_struct["atom_name"] = value.atom_name
-            if self.chain_id is None:
-                atom_array_struct["chain_id"] = value.chain_id[residue_starts]
-            else:
-                atom_array_struct["chain_id"] = None
+            atom_array_struct["chain_id"] = value.chain_id[residue_starts]
             for attr in [
                 "box",
                 "occupancy",
@@ -564,17 +563,13 @@ class AtomArrayFeature(CustomFeature):
         num_atoms = len(value["coords"])
         if self.all_atoms_present:
             restype_index = value.pop("restype_index")
-            if self.chain_id is None:
-                chain_id = value.pop("chain_id")  # residue-level annotation
-            else:
-                chain_id = np.full(len(restype_index), self.chain_id)
-                del value["chain_id"]
+            chain_id = value.pop("chain_id")  # residue-level annotation
             atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
                 restype_index,
                 residue_dictionary=self.residue_dictionary,
                 chain_id=chain_id,
                 backbone_only=self.backbone_only,
-            )
+            )  # n.b. this sets element
             residue_index = (
                 np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
             )
@@ -602,18 +597,22 @@ class AtomArrayFeature(CustomFeature):
             else:
                 atoms.set_annotation("res_name", value.pop("res_name")[residue_index])
             atoms.set_annotation("atom_name", value.pop("atom_name"))
-            if "chain_id" in value and self.chain_id is None:
+            if "chain_id" in value:
                 atoms.set_annotation("chain_id", value.pop("chain_id")[residue_index])
             elif self.chain_id is not None:
                 atoms.set_annotation("chain_id", np.full(num_atoms, self.chain_id))
+
+            if self.with_element:
+                atoms.set_annotation("element", value.pop("element"))
+            else:
+                raise ValueError(
+                    "with_element must be True if all_atoms_present is False"
+                )
 
         if self.b_factor_is_plddt and "b_factor" in value:
             atoms.set_annotation("b_factor", value.pop("b_factor")[residue_index])
 
         atoms.coord = value.pop("coords")
-        if not self.with_element:
-            # TODO fix (e.g. with residue dictionary somehow)
-            raise NotImplementedError()
         if "bond_edges" in value:
             bonds_array = value.pop("bond_edges")
             bond_types = value.pop("bond_types")
@@ -1007,7 +1006,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 b_factor_dtype="float16",
                 coords_dtype="float16",
                 all_atoms_present=True,
-                chain_id="A",
+                with_element=False,
                 **kwargs,
             )
         elif preset == "pdb":

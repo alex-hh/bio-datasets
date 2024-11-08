@@ -123,6 +123,20 @@ class ProteinDictionary(ResidueDictionary):
         atom_names[oxt_mask] = "OXT"
         return atom_names
 
+    def get_elements(self, restype_index, relative_atom_index, chain_id):
+        assert len(np.unique(chain_id)) == 1
+        final_residue_mask = restype_index == restype_index[-1]
+        oxt_mask = final_residue_mask & (
+            relative_atom_index == self.residue_sizes[restype_index]
+        )
+        elements = np.full((len(restype_index)), "", dtype="U6")
+        elements[~oxt_mask] = self.standard_elements_by_residue()[
+            restype_index[~oxt_mask],
+            relative_atom_index[~oxt_mask],
+        ]
+        elements[oxt_mask] = "O"
+        return elements
+
 
 def filter_backbone(array, residue_dictionary):
     """
@@ -192,6 +206,7 @@ class ProteinMixin:
         )
 
     def beta_carbon_coords(self) -> np.ndarray:
+        # TODO: check for nan cb or missing cb
         has_beta_carbon = self.atoms.res_name != "GLY"
         beta_carbon_coords = np.zeros((self.num_residues, 3), dtype=np.float32)
         beta_carbon_coords[has_beta_carbon[self._residue_starts]] = self.atoms.coord[

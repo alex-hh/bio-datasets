@@ -480,11 +480,12 @@ class Biomolecule(Generic[T]):
         )
 
     def backbone(self) -> T:
-        return self.__class__(self.atoms[self.backbone_mask])
+        # TODO: might need to also modify residue dictionary to avoid explicit nan atom coords
+        return self.__class__(self.atoms[self.backbone_mask], self.residue_dictionary)
 
     def get_chain(self, chain_id: str):
         chain_filter = self.atoms.chain_id == chain_id
-        return self.__class__(self.atoms[chain_filter].copy())
+        return self.__class__(self.atoms[chain_filter].copy(), self.residue_dictionary)
 
 
 class BiomoleculeChain(Biomolecule):
