@@ -12,11 +12,7 @@ from typing import List, Optional, Union
 import biotite.structure as bs
 import numpy as np
 
-from bio_datasets.structure.biomolecule import (
-    BaseBiomoleculeComplex,
-    Biomolecule,
-    BiomoleculeChain,
-)
+from bio_datasets.structure.biomolecule import BaseBiomoleculeComplex, BiomoleculeChain
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import (
     ResidueDictionary,
@@ -189,33 +185,6 @@ def set_annotation_at_masked_atoms(
 class ProteinMixin:
     def to_complex(self):
         return ProteinComplex.from_atoms(self.atoms)
-
-    @staticmethod
-    def standardise_atoms(
-        atoms,
-        residue_dictionary: ProteinDictionary,
-        verbose: bool = False,
-        backbone_only: bool = False,
-    ):
-        """We want all atoms to be present, with nan coords if any are missing.
-
-        We also want to ensure that atoms are in the correct order.
-
-        We can do this in a vectorised way by calculating the expected index of each atom,
-        creating a new atom array with number of atoms equal to the expected number of atoms,
-        and then filling in the present atoms in the new array according to the expected index.
-
-        This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
-        and `to_atom37` can be applied safely downstream.
-        """
-        if not residue_dictionary.keep_oxt:
-            atoms = atoms[atoms.atom_name != "OXT"]
-        return Biomolecule.standardise_atoms(
-            atoms,
-            residue_dictionary,
-            verbose=verbose,
-            backbone_only=backbone_only,
-        )
 
     def beta_carbon_coords(self) -> np.ndarray:
         # TODO: check for nan cb or missing cb

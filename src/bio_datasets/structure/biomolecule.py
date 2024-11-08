@@ -128,7 +128,6 @@ class Biomolecule(Generic[T]):
         residue_dictionary: Optional[ResidueDictionary] = None,
         raise_error_on_unexpected: bool = False,
         keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
     ):
         # drop water
         atoms = atoms[atoms.res_name != "HOH"]
@@ -137,7 +136,9 @@ class Biomolecule(Generic[T]):
                 "element" in atoms._annot
             ), "Elements must be present to exclude hydrogens"
             atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
-        if not keep_oxt:
+        if residue_dictionary is None or not getattr(
+            residue_dictionary, "keep_oxt", False
+        ):
             # oxt complicates things for residue dictionary.
             atoms = atoms[atoms.atom_name != "OXT"]
         # TODO: we actually want to use residue_dictionary.residue_atoms

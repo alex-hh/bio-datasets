@@ -37,7 +37,8 @@ from bio_datasets import (
     Sequence,
     Value,
 )
-from bio_datasets.structure.protein import ProteinDictionary, ProteinMixin
+from bio_datasets.structure.biomolecule import Biomolecule
+from bio_datasets.structure.protein import ProteinDictionary
 from bio_datasets.structure.protein import constants as protein_constants
 
 UPLOAD = "upload_from_filename"
@@ -110,6 +111,9 @@ def import_pinder(override_gsutil: bool = False):
         get_seq_alignments,
         mask_from_res_list,
     )
+
+
+import_pinder(override_gsutil=True)
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -294,10 +298,12 @@ class PinderDataset:
         assert len(set(ref_chains)) == 1
 
         ref_at = ref_struct.atom_array.copy()
-        residue_dict = ProteinDictionary(drop_oxt=True)
-        ref_at = ProteinMixin.standardise_atoms(ref_at, residue_dict)
+        residue_dict = ProteinDictionary.from_preset("protein", keep_oxt=False)
+        ref_at = Biomolecule.filter_atoms(ref_at, residue_dictionary=residue_dict)
+        ref_at = Biomolecule.standardise_atoms(ref_at, residue_dict)
         target_at = target_struct.atom_array.copy()
-        target_at = ProteinMixin.standardise_atoms(target_at, residue_dict)
+        target_at = Biomolecule.filter_atoms(target_at, residue_dictionary=residue_dict)
+        target_at = Biomolecule.standardise_atoms(target_at, residue_dict)
 
         if mode == "ref":
             # We drop any target residues that aren't present in the reference.
@@ -368,9 +374,11 @@ class PinderDataset:
             )
             return None
 
-        protein_dict = ProteinDictionary(drop_oxt=True)
-        native_R_at = ProteinMixin.standardise_atoms(native_R.atom_array, protein_dict)
-        native_L_at = ProteinMixin.standardise_atoms(native_L.atom_array, protein_dict)
+        protein_dict = ProteinDictionary.from_preset("protein", keep_oxt=False)
+        native_R_at = Biomolecule.filter_atoms(native_R.atom_array, protein_dict)
+        native_L_at = Biomolecule.filter_atoms(native_L.atom_array, protein_dict)
+        native_R_at = Biomolecule.standardise_atoms(native_R_at, protein_dict)
+        native_L_at = Biomolecule.standardise_atoms(native_L_at, protein_dict)
         native_R.atom_array = native_R_at
         native_L.atom_array = native_L_at
 
@@ -426,10 +434,10 @@ class PinderDataset:
 
         holo_receptor_at = holo_receptor.atom_array.copy()
         holo_ligand_at = holo_ligand.atom_array.copy()
-        holo_receptor_at = ProteinMixin.standardise_atoms(
-            holo_receptor_at, protein_dict
-        )
-        holo_ligand_at = ProteinMixin.standardise_atoms(holo_ligand_at, protein_dict)
+        holo_receptor_at = Biomolecule.filter_atoms(holo_receptor_at, protein_dict)
+        holo_ligand_at = Biomolecule.filter_atoms(holo_ligand_at, protein_dict)
+        holo_receptor_at = Biomolecule.standardise_atoms(holo_receptor_at, protein_dict)
+        holo_ligand_at = Biomolecule.standardise_atoms(holo_ligand_at, protein_dict)
         holo_receptor = Structure(
             filepath=holo_receptor.filepath,
             uniprot_map=holo_receptor.uniprot_map,
@@ -648,7 +656,7 @@ if __name__ == "__main__":
             index = index.groupby("cluster_id").head(1)
 
     cluster_ids = list(index.cluster_id.unique())
-    protein_dict = ProteinDictionary()
+    protein_dict = ProteinDictionary.from_preset("protein")
     print(f"Pinder dataset: {len(cluster_ids)} clusters; {len(index)} systems")
 
     # TODO: decide on appropriate metadata (probably most of stuff from metadata...)
