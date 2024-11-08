@@ -552,6 +552,18 @@ class BaseBiomoleculeComplex(Biomolecule):
     def __getitem__(self, key):
         return self.get_chain(key)
 
+    @property
+    def atoms(self):
+        chain_atoms = [chain.atoms for chain in self._chains_lookup.values()]
+        atoms = sum(chain_atoms, bs.AtomArray(length=0))
+        for annot_name, annot in chain_atoms[0]._annot.items():
+            if annot_name not in atoms._annot:
+                atoms.set_annotation(
+                    annot_name,
+                    np.concatenate([at._annot[annot_name] for at in chain_atoms]),
+                )
+        return atoms
+
     @classmethod
     def from_file(
         cls,
