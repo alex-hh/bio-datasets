@@ -42,8 +42,7 @@ class Biomolecule(Generic[T]):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
+        keep_hydrogens: bool = False,  # TODO: handle with residue dictionary
         raise_error_on_unexpected: bool = False,
         replace_unexpected_with_unknown: bool = False,
     ):
@@ -52,7 +51,6 @@ class Biomolecule(Generic[T]):
         self.raise_error_on_unexpected = raise_error_on_unexpected
         self.replace_unexpected_with_unknown = replace_unexpected_with_unknown
         self.keep_hydrogens = keep_hydrogens
-        self.keep_oxt = keep_oxt
         atoms = self.convert_residues(
             atoms,
             self.residue_dictionary,
@@ -63,7 +61,6 @@ class Biomolecule(Generic[T]):
             self.residue_dictionary,
             raise_error_on_unexpected=self.raise_error_on_unexpected,
             keep_hydrogens=self.keep_hydrogens,
-            keep_oxt=self.keep_oxt,
         )  # e.g. check for standard residues.
         self.atoms = self.standardise_atoms(
             atoms,
@@ -505,7 +502,6 @@ class BiomoleculeChain(Biomolecule):
         verbose: bool = False,
         backbone_only: bool = False,
         keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
         raise_error_on_unexpected: bool = False,
         replace_unexpected_with_unknown: bool = False,
     ):
@@ -518,7 +514,6 @@ class BiomoleculeChain(Biomolecule):
             verbose=verbose,
             backbone_only=backbone_only,
             keep_hydrogens=keep_hydrogens,
-            keep_oxt=keep_oxt,
             raise_error_on_unexpected=raise_error_on_unexpected,
             replace_unexpected_with_unknown=replace_unexpected_with_unknown,
         )
