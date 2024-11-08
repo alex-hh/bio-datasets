@@ -101,7 +101,7 @@ RES_NAMES = get_ccd()["chem_comp"]["id"].as_array()
 def get_component_types():
     ccd_data = get_ccd()
     res_types = ccd_data["chem_comp"]["type"].as_array()
-    return {name: type for name, type in zip(RES_NAMES, res_types)}
+    return {name: res_type for name, res_type in zip(RES_NAMES, res_types)}
 
 
 def get_component_categories(chem_component_types: Dict[str, str]):

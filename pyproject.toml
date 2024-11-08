@@ -48,3 +48,11 @@ extend-exclude = '''
   | dist
 )/
 '''
+
+[tool.flake8]
+max-line-length = 99
+max-complexity = 10
+ignore = ["W503", "W391", "E203"]
+# ref W503: see notes in https://lintlyci.github.io/Flake8Rules/rules/W503.html
+# ref W391: see possible issue with vim https://github.com/PyCQA/pycodestyle/issues/365
+# ref E203: https://github.com/psf/black/issues/315
