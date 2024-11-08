@@ -12,29 +12,33 @@ repos:
     hooks:
       - id: black
         types: [python]
-        exclude: '^data|.*\.pdb$'
+        exclude: '^data|.*\.pdb$|.*\.cif|.*\.bcif'
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
       - id: check-yaml
-        exclude: '^data|.*\.pdb$|^src/bio_datasets/structure/protein/library'
+        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library'
       - id: end-of-file-fixer
-        exclude: '^data|.*\.pdb$|^src/bio_datasets/structure/protein/library'
+        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library'
       - id: trailing-whitespace
-        exclude: '^data|.*\.pdb$|^src/bio_datasets/structure/protein/library'
+        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library'
         # exclude: '^data|^scripts/gvp'
-  # - repo: https://github.com/PyCQA/flake8
-  #   rev: 4.0.1
-  #   hooks:
-  #     - id: flake8
-  #       name: "Linter"
-  #       args:
-  #         - --config=setup.cfg
-  #       additional_dependencies:
-  #         - pep8-naming
-  #         - flake8-builtins
-  #         - flake8-comprehensions
-  #         - flake8-bugbear
-  #         - flake8-pytest-style
-  #         - flake8-cognitive-complexity
-  #       exclude: '^evoif/gvp|^evoif/lm-design'
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0  # Use the latest stable version
+    hooks:
+      - id: flake8
+        exclude: '^examples'
+        name: "Linter"
+        types: [python]
+        args:
+          # - --config=pyproject.toml  # TODO: fix this
+          - --ignore=E501,W503,W391,E203,N806
+          - --max-cognitive-complexity=12
+          - --max-line-length=88
+        additional_dependencies:
+          - pep8-naming
+          - flake8-builtins
+          - flake8-comprehensions
+          - flake8-bugbear
+          - flake8-pytest-style
+          - flake8-cognitive-complexity

@@ -2,62 +2,78 @@
 
 This library is not intended to be a general-purpose library for protein structure analysis.
 We simply wrap Biotite's AtomArray and AtomArrayStack to offer a few convenience methods
-for dealing with protein structures in an ML context.
+for dealing with protein structures in an ML context; specifically exposing residue-level properties,
+including coordinates and distances.
 """
 import copy
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import List, Optional, Union
 
 import biotite.structure as bs
 import numpy as np
 
 from bio_datasets.structure.biomolecule import (
+    BaseBiomoleculeComplex,
     Biomolecule,
     BiomoleculeChain,
-    BiomoleculeComplex,
 )
 from bio_datasets.structure.protein import constants as protein_constants
-from bio_datasets.structure.residue import ResidueDictionary
+from bio_datasets.structure.residue import (
+    ResidueDictionary,
+    get_all_residue_names,
+    register_preset_res_dict,
+)
 
 from .constants import RESTYPE_ATOM37_TO_ATOM14, atom_types
-
-# from biotite.structure.filter import filter_amino_acids  includes non-standard
-
 
 # TODO: RESTYPE ATOM37 TO ATOM14 can be derived from ResidueDictionary (atom14_coords)
 
 
+register_preset_res_dict(
+    "protein",
+    residue_names=copy.deepcopy(protein_constants.resnames),
+    atom_types=copy.deepcopy(protein_constants.atom_types),
+    backbone_atoms=["N", "CA", "C", "O"],
+    unknown_residue_name="UNK",
+    conversions=[
+        {
+            "residue": "MSE",
+            "to_residue": "MET",
+            "atom_swaps": [("SE", "SD")],
+            "element_swaps": [("SE", "S")],
+        },
+        {
+            "residue": "SEC",
+            "to_residue": "CYS",
+            "atom_swaps": [("SE", "SG")],
+            "element_swaps": [("SE", "S")],
+        },
+    ],
+)
+
+
+register_preset_res_dict(
+    "protein_all",
+    residue_names=get_all_residue_names("protein"),
+    backbone_atoms=["N", "CA", "C", "O"],
+    unknown_residue_name="UNK",
+)
+
+
 @dataclass
 class ProteinDictionary(ResidueDictionary):
-    """Defaults configure a dictionary with just the 20 standard amino acids"""
+    """Defaults configure a dictionary with just the 20 standard amino acids.
 
-    # TODO: these are actually all constants
-    residue_names: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.resnames)
-    )
-    residue_types: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.restypes_with_x)
-    )
-    atom_types: np.ndarray = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.atom_types)
-    )
-    residue_atoms: Dict[str, List[str]] = field(
-        default_factory=lambda: copy.deepcopy(protein_constants.residue_atoms)
-    )
-    backbone_atoms: List[str] = field(default_factory=lambda: ["N", "CA", "C", "O"])
-    unknown_residue_name: str = field(default_factory=lambda: "UNK")
-    conversions: List[Dict[str, str]] = field(
-        default_factory=lambda: [
-            {"residue": "MSE", "to_residue": "MET", "atom_swaps": [("SE", "SD")]},
-            {"residue": "SEC", "to_residue": "CYS", "atom_swaps": [("SE", "SG")]},
-        ]
-    )
-    drop_oxt: bool = False
+    Supports OXT atoms, which generic residue dictionary does not currently.
+    """
+
+    keep_oxt: bool = False
 
     def _check_atom14_compatible(self):
         return all(len(res_ats) <= 14 for res_ats in self.residue_atoms.values())
 
     def _check_atom37_compatible(self):
+        assert self.atom_types is not None
         return all(
             at in protein_constants.atom_types
             for res_ats in self.residue_atoms.values()
@@ -82,11 +98,12 @@ class ProteinDictionary(ResidueDictionary):
         if isinstance(chain_id, np.ndarray):
             assert len(np.unique(chain_id)) == 1
         residue_sizes = self.residue_sizes[restype_index].copy()
-        if not self.drop_oxt:
+        if self.keep_oxt:
             residue_sizes[-1] += 1  # add oxt
         return residue_sizes
 
     def get_expected_relative_atom_indices(self, restype_index, atomtype_index):
+        assert self.atom_types is not None
         expected_relative_atom_indices = np.zeros(restype_index.shape[0]).astype(int)
         oxt_id = self.atom_types.index("OXT")
         oxt_mask = atomtype_index == oxt_id
@@ -111,7 +128,7 @@ class ProteinDictionary(ResidueDictionary):
             relative_atom_index == self.residue_sizes[restype_index]
         )
         atom_names = np.full((len(restype_index)), "", dtype="U6")
-        atom_names[~oxt_mask] = self.standard_atoms_by_residue[
+        atom_names[~oxt_mask] = self.standard_atoms_by_residue()[
             restype_index[~oxt_mask],
             relative_atom_index[~oxt_mask],
         ]
@@ -121,6 +138,20 @@ class ProteinDictionary(ResidueDictionary):
     def restype_1to3(self, restype: str) -> str:
         assert len(restype) == 1, "restype must be a single character"
         return protein_constants.restype_1to3[restype]
+
+    def get_elements(self, restype_index, relative_atom_index, chain_id):
+        assert len(np.unique(chain_id)) == 1
+        final_residue_mask = restype_index == restype_index[-1]
+        oxt_mask = final_residue_mask & (
+            relative_atom_index == self.residue_sizes[restype_index]
+        )
+        elements = np.full((len(restype_index)), "", dtype="U6")
+        elements[~oxt_mask] = self.standard_elements_by_residue()[
+            restype_index[~oxt_mask],
+            relative_atom_index[~oxt_mask],
+        ]
+        elements[oxt_mask] = "O"
+        return elements
 
 
 def filter_backbone(array, residue_dictionary):
@@ -181,7 +212,7 @@ class ProteinMixin:
         This standardisation ensures that methods like `backbone_positions`,`to_atom14`,
         and `to_atom37` can be applied safely downstream.
         """
-        if residue_dictionary.drop_oxt:
+        if not residue_dictionary.keep_oxt:
             atoms = atoms[atoms.atom_name != "OXT"]
         return Biomolecule.standardise_atoms(
             atoms,
@@ -191,6 +222,7 @@ class ProteinMixin:
         )
 
     def beta_carbon_coords(self) -> np.ndarray:
+        # TODO: check for nan cb or missing cb
         has_beta_carbon = self.atoms.res_name != "GLY"
         beta_carbon_coords = np.zeros((self.num_residues, 3), dtype=np.float32)
         beta_carbon_coords[has_beta_carbon[self._residue_starts]] = self.atoms.coord[
@@ -203,10 +235,8 @@ class ProteinMixin:
 
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
         assert all(
-            [
-                atom in self.residue_dictionary.backbone_atoms + ["CB"]
-                for atom in atom_names
-            ]
+            atom in self.residue_dictionary.backbone_atoms + ["CB"]
+            for atom in atom_names
         ), f"Invalid entries in atom names: {atom_names}"
         coords = super().backbone_coords([at for at in atom_names if at != "CB"])
         if "CB" in atom_names:
@@ -224,7 +254,7 @@ class ProteinMixin:
         return super().contacts(atom_name=atom_name, threshold=threshold)
 
     def atom14_coords(self) -> np.ndarray:
-        assert (
+        assert (  # noqa: PT018
             self.residue_dictionary.atom14_compatible
             and self.residue_dictionary.atom37_compatible
         ), "Atom14 representation assumes use of standard amino acid dictionary"
@@ -246,10 +276,6 @@ class ProteinMixin:
         ] = self.atoms.coord
         return atom37_coords
 
-    def get_chain(self, chain_id: str):
-        chain_filter = self.atoms.chain_id == chain_id
-        return ProteinChain(self.atoms[chain_filter].copy())
-
 
 class ProteinChain(ProteinMixin, BiomoleculeChain):
 
@@ -261,32 +287,37 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
         residue_dictionary: Optional[ResidueDictionary] = None,
         verbose: bool = False,
         backbone_only: bool = False,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
+        replace_unexpected_with_unknown: bool = False,
+        raise_error_on_unexpected: bool = False,
     ):
         if residue_dictionary is None:
-            residue_dictionary = ProteinDictionary()
+            residue_dictionary = ProteinDictionary.from_preset(
+                "protein", keep_oxt=keep_oxt
+            )
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
+            keep_hydrogens=keep_hydrogens,
+            keep_oxt=keep_oxt,
+            replace_unexpected_with_unknown=replace_unexpected_with_unknown,
+            raise_error_on_unexpected=raise_error_on_unexpected,
         )
 
-    @property
-    def chain_id(self):
-        return self.atoms.chain_id[0]
 
-
-class ProteinComplex(ProteinMixin, BiomoleculeComplex):
+class ProteinComplex(ProteinMixin, BaseBiomoleculeComplex):
     """A protein complex."""
 
-    def __init__(self, proteins: List[ProteinChain]):
-        self._chain_ids = [prot.chain_id for prot in proteins]
-        self._proteins_lookup = {prot.chain_id: prot for prot in proteins}
-
     @classmethod
-    def from_atoms(cls, atoms: bs.AtomArray) -> "ProteinComplex":
+    def from_atoms(cls, atoms: bs.AtomArray, **kwargs) -> "ProteinComplex":
         # basically ensures that chains are in alphabetical order and all constituents are single-chain.
         chain_ids = sorted(np.unique(atoms.chain_id))
         return cls(
-            [ProteinChain(atoms[atoms.chain_id == chain_id]) for chain_id in chain_ids]
+            [
+                ProteinChain(atoms[atoms.chain_id == chain_id], **kwargs)
+                for chain_id in chain_ids
+            ]
         )

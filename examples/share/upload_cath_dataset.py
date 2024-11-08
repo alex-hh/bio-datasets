@@ -82,7 +82,6 @@ def main(
         assert len(split_coords) > 0, f"No examples found for split {split_name}"
         # from_generator calls GeneratorBasedBuilder.download_and_prepare and as_dataset
         features = Features(
-            # TODO: make a ProteinBackboneAtomArrayFeature?
             backbone=ProteinAtomArrayFeature(
                 residue_dictionary=ProteinDictionary(), backbone_only=True
             ),

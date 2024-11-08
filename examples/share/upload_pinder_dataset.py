@@ -28,9 +28,15 @@ import pandas as pd
 import tqdm
 from biotite import structure as bs
 from google.cloud.storage import Blob
-from pinder.core.utils import cloud as pinder_cloud_utils
 
-from bio_datasets import Dataset, Features, NamedSplit, Sequence, Value
+from bio_datasets import (
+    Dataset,
+    Features,
+    NamedSplit,
+    ProteinAtomArrayFeature,
+    Sequence,
+    Value,
+)
 from bio_datasets.structure.protein import ProteinDictionary, ProteinMixin
 from bio_datasets.structure.protein import constants as protein_constants
 
@@ -38,43 +44,59 @@ UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
 
 
-def process_many(
-    path_pairs: List[Tuple[str, Blob]],
-    method: str,
-    global_timeout: int = 600,
-    timeout: Tuple[int, int] = (10, 320),
-    retries: int = 5,
-    threads: int = 4,
-) -> None:
-    f"""Serial version of process_many.
+def override_gsutil():
+    import pinder.core.utils.cloud
 
-    Parameters
-    ----------
-    path_pairs : list
-        tuples of (path_str, Blob)
-    method : str
-        "{UPLOAD}" | "{DOWNLOAD}"
-    global_timeout : int=600
-        timeout to wait for all operations to complete
-    timeout : tuple, default=(5, 120)
-        timeout forwarded to Blob method
-    retries : int, default=5
-        how many times to attempt the method
-    threads : int, default=4
-        how many threads to use in the thread pool
-    """
-    if not len(path_pairs):
-        return
-    if method not in pinder_cloud_utils.BLOB_ACTIONS:
-        raise Exception(f"{method=} not in {pinder_cloud_utils.BLOB_ACTIONS=}")
-    for path, blob in path_pairs:
-        pinder_cloud_utils.retry_blob_method(
-            blob,
-            method,
-            path,
-            retries=retries,
-            timeout=timeout,
-        )
+    def process_many(
+        path_pairs: List[Tuple[str, Blob]],
+        method: str,
+        global_timeout: int = 600,
+        timeout: Tuple[int, int] = (10, 320),
+        retries: int = 5,
+        threads: int = 4,
+    ) -> None:
+        """Serial version of process_many.
+
+        Parameters
+        ----------
+        path_pairs : list
+            tuples of (path_str, Blob)
+        method : str
+            "upload_from_filename" | "download_to_filename"
+        global_timeout : int=600
+            timeout to wait for all operations to complete
+        timeout : tuple, default=(5, 120)
+            timeout forwarded to Blob method
+        retries : int, default=5
+            how many times to attempt the method
+        threads : int, default=4
+            how many threads to use in the thread pool
+        """
+        if not len(path_pairs):
+            return
+        if method not in pinder_cloud_utils.BLOB_ACTIONS:
+            raise Exception(f"{method=} not in {pinder_cloud_utils.BLOB_ACTIONS=}")
+        for path, blob in path_pairs:
+            pinder_cloud_utils.retry_blob_method(
+                blob,
+                method,
+                path,
+                retries=retries,
+                timeout=timeout,
+            )
+
+    class Gsutil(pinder_cloud_utils.Gsutil):
+        @staticmethod
+        def process_many(
+            *args: List[Tuple[str, Blob]], **kwargs: int | tuple[int, int]
+        ) -> None:
+            process_many(*args, **kwargs)
+            return None
+
+    pinder.core.utils.cloud.Gsutil = Gsutil
+
+
+override_gsutil()
 
 
 from pinder.core import PinderSystem, get_index, get_metadata
@@ -88,8 +110,6 @@ from pinder.core.structure.atoms import (
     get_seq_alignments,
     mask_from_res_list,
 )
-
-from bio_datasets import ProteinAtomArrayFeature
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -599,6 +619,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.safe_download or (args.num_proc is not None and args.num_proc > 1):
         pinder_cloud_utils.process_many = process_many
+        pinder_cloud_utils.Gsutil.process_many = process_many
 
     index = get_index()
     metadata = get_metadata()

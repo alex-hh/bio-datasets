@@ -1,5 +1,5 @@
 import io
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Generic, List, Optional, TypeVar, Union
 
 import numpy as np
 from biotite import structure as bs
@@ -7,116 +7,24 @@ from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
+from bio_datasets.structure.parsing import load_structure
 
-from .chemical.chemical import Molecule, T
-from .residue import ResidueDictionary, get_residue_starts_mask
+from .residue import (
+    ResidueDictionary,
+    create_complete_atom_array_from_restype_index,
+    get_residue_starts_mask,
+)
+
+# from biotite.structure.filter import filter_highest_occupancy_altloc  performed automatically by biotite
+
 
 ALL_EXTRA_FIELDS = ["occupancy", "b_factor", "atom_id", "charge"]
 
 
-def create_complete_atom_array_from_restype_index(
-    restype_index: np.ndarray,
-    residue_dictionary: ResidueDictionary,
-    chain_id: Tuple[str, np.ndarray],
-    extra_fields: Optional[List[str]] = None,
-    backbone_only: bool = False,
-):
-    """
-    Populate annotations from restype_index, assuming all atoms are present.
-
-    Assumes single chain for now
-    """
-    if isinstance(chain_id, np.ndarray):
-        unique_chain_ids = np.unique(chain_id)
-        chain_atom_arrays = []
-        chain_residue_starts = []
-        residue_starts_offset = 0
-        for chain_id in unique_chain_ids:
-            (
-                atom_array,
-                residue_starts,
-                full_annot_names,
-            ) = create_complete_atom_array_from_restype_index(
-                restype_index=restype_index,
-                residue_dictionary=residue_dictionary,
-                chain_id=chain_id,
-                extra_fields=extra_fields,
-                backbone_only=backbone_only,
-            )
-            chain_atom_arrays.append(atom_array)
-            chain_residue_starts.append(residue_starts + residue_starts_offset)
-            residue_starts_offset += len(atom_array)
-        concatenated_array = sum(chain_atom_arrays, bs.AtomArray(length=0))
-        for key in atom_array._annot.keys():
-            if key not in concatenated_array._annot:
-                concatenated_array.set_annotation(
-                    key,
-                    np.concatenate([atoms._annot[key] for atoms in chain_atom_arrays]),
-                )
-        return (
-            concatenated_array,
-            np.concatenate(chain_residue_starts),
-            full_annot_names,
-        )
-    else:
-        if backbone_only:
-            residue_sizes = len(residue_dictionary.backbone_atoms) * len(restype_index)
-        else:
-            residue_sizes = residue_dictionary.get_residue_sizes(
-                restype_index, chain_id
-            )
-            # (n_residues,) NOT (n_atoms,)
-
-        residue_starts = np.concatenate(
-            [[0], np.cumsum(residue_sizes)[:-1]]
-        )  # (n_residues,)
-        new_atom_array = bs.AtomArray(length=np.sum(residue_sizes))
-        chain_id = np.full(len(new_atom_array), chain_id, dtype="U4")
-        new_atom_array.set_annotation(
-            "chain_id",
-            chain_id,
-        )
-        full_annot_names = [
-            "chain_id",
-        ]
-        residue_index = (
-            np.cumsum(get_residue_starts_mask(new_atom_array, residue_starts)) - 1
-        )
-
-        relative_atom_index = (
-            np.arange(len(new_atom_array)) - residue_starts[residue_index]
-        )
-        atom_names = new_atom_array.atom_name
-        new_atom_array.set_annotation("restype_index", restype_index[residue_index])
-        atom_names = residue_dictionary.get_atom_names(
-            new_atom_array.restype_index, relative_atom_index, chain_id
-        )
-        new_atom_array.set_annotation("atom_name", atom_names)
-        new_atom_array.set_annotation(
-            "res_name",
-            np.array(residue_dictionary.residue_names)[new_atom_array.restype_index],
-        )
-        new_atom_array.set_annotation("res_index", residue_index)
-        new_atom_array.set_annotation("res_id", residue_index + 1)
-        new_atom_array.set_annotation(
-            "element", np.char.array(new_atom_array.atom_name).astype("U1")
-        )
-        full_annot_names += [
-            "atom_name",
-            "restype_index",
-            "res_name",
-            "res_index",
-            "res_id",
-        ]
-        if extra_fields is not None:
-            for f in extra_fields:
-                new_atom_array.add_annotation(
-                    f, dtype=float if f in ["occupancy", "b_factor"] else int
-                )
-        return new_atom_array, residue_starts, full_annot_names
+T = TypeVar("T", bound="Biomolecule")
 
 
-class Biomolecule(Molecule):
+class Biomolecule(Generic[T]):
     """Base class for biomolecule objects.
 
     Biomolecules (DNA, RNA and Proteins) are chains of residues.
@@ -134,16 +42,28 @@ class Biomolecule(Molecule):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        raise_error_on_unexpected_residue: bool = False,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
+        raise_error_on_unexpected: bool = False,
+        replace_unexpected_with_unknown: bool = False,
     ):
         self.residue_dictionary = residue_dictionary
         self.backbone_only = backbone_only
-        self.raise_error_on_unexpected_residue = raise_error_on_unexpected_residue
-        atoms = self.convert_residues(atoms, self.residue_dictionary)
+        self.raise_error_on_unexpected = raise_error_on_unexpected
+        self.replace_unexpected_with_unknown = replace_unexpected_with_unknown
+        self.keep_hydrogens = keep_hydrogens
+        self.keep_oxt = keep_oxt
+        atoms = self.convert_residues(
+            atoms,
+            self.residue_dictionary,
+            replace_unexpected_with_unknown=self.replace_unexpected_with_unknown,
+        )
         atoms = self.filter_atoms(
             atoms,
             self.residue_dictionary,
-            raise_error_on_unexpected=self.raise_error_on_unexpected_residue,
+            raise_error_on_unexpected=self.raise_error_on_unexpected,
+            keep_hydrogens=self.keep_hydrogens,
+            keep_oxt=self.keep_oxt,
         )  # e.g. check for standard residues.
         self.atoms = self.standardise_atoms(
             atoms,
@@ -154,34 +74,92 @@ class Biomolecule(Molecule):
         self._standardised = True
 
     @property
+    def backbone_atoms(self):
+        return self.residue_dictionary.backbone_atoms
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path,
+        file_type: Optional[str] = None,
+        residue_dictionary: Optional[ResidueDictionary] = None,
+        extra_fields: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        if residue_dictionary is None:
+            residue_dictionary = (
+                ResidueDictionary.from_ccd_dict()
+            )  # TODO: better default?
+        atoms = load_structure(
+            file_path, file_type=file_type, extra_fields=extra_fields
+        )
+        return cls(atoms, residue_dictionary, **kwargs)
+
+    @property
     def is_standardised(self):
         return self._standardised
 
     @staticmethod
-    def convert_residues(atoms: bs.AtomArray, residue_dictionary: ResidueDictionary):
+    def convert_residues(
+        atoms: bs.AtomArray,
+        residue_dictionary: ResidueDictionary,
+        replace_unexpected_with_unknown: bool = False,
+    ):
+        if replace_unexpected_with_unknown:
+            raise NotImplementedError("Not implemented")
         for conversion_dict in residue_dictionary.conversions or []:
             atom_swaps = conversion_dict["atom_swaps"]
+            element_swaps = conversion_dict["element_swaps"]
             from_mask = (atoms.res_name == conversion_dict["residue"]).astype(bool)
             for swap in atom_swaps:
                 atoms.atom_name[
                     from_mask & (atoms.atom_name == swap[0]).astype(bool)
+                ] = swap[1]
+            for swap in element_swaps:
+                atoms.element[
+                    from_mask & (atoms.element == swap[0]).astype(bool)
                 ] = swap[1]
             atoms.res_name[from_mask] = conversion_dict["to_residue"]
         return atoms
 
     @staticmethod
     def filter_atoms(
-        atoms, residue_dictionary, raise_error_on_unexpected: bool = False
+        atoms,
+        residue_dictionary: Optional[ResidueDictionary] = None,
+        raise_error_on_unexpected: bool = False,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
     ):
-        expected_residue_mask = np.isin(
-            atoms.res_name, residue_dictionary.residue_names
-        )
-        if raise_error_on_unexpected and ~expected_residue_mask.any():
-            unexpected_residues = np.unique(atoms[~expected_residue_mask].res_name)
-            raise ValueError(
-                f"Found unexpected residues: {unexpected_residues} in atom array"
+        # drop water
+        atoms = atoms[atoms.res_name != "HOH"]
+        if not keep_hydrogens:
+            assert (
+                "element" in atoms._annot
+            ), "Elements must be present to exclude hydrogens"
+            atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        if not keep_oxt:
+            # oxt complicates things for residue dictionary.
+            atoms = atoms[atoms.atom_name != "OXT"]
+        if residue_dictionary is not None:
+            expected_residue_mask = np.isin(
+                atoms.res_name, residue_dictionary.residue_names
             )
-        return atoms[expected_residue_mask]
+            if raise_error_on_unexpected and ~expected_residue_mask.any():
+                unexpected_residues = np.unique(atoms[~expected_residue_mask].res_name)
+                raise ValueError(
+                    f"Found unexpected residues: {unexpected_residues} in atom array"
+                )
+            return atoms[expected_residue_mask]
+        return atoms
+
+    @staticmethod
+    def reorder_chains(atoms):
+        chain_ids = np.unique(atoms.chain_id)
+        atom_arrs = []
+        for chain_id in chain_ids:
+            chain_mask = atoms.chain_id == chain_id
+            atom_arrs.append(atoms[chain_mask])
+        return sum(atom_arrs, bs.AtomArray(length=0))
 
     @staticmethod
     def standardise_atoms(
@@ -190,22 +168,33 @@ class Biomolecule(Molecule):
         verbose: bool = False,
         backbone_only: bool = False,
     ):
-        assert (
-            "element" in atoms._annot
-        ), "Elements must be present to exclude hydrogens"
-        atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
+        atoms = Biomolecule.reorder_chains(atoms)
         residue_starts = get_residue_starts(atoms)
-        if "atomtype_index" not in atoms._annot:
+        if (
+            "atomtype_index" not in atoms._annot
+            and residue_dictionary.atom_types is not None
+        ):
             atoms.set_annotation(
                 "atomtype_index",
                 map_categories_to_indices(
                     atoms.atom_name, residue_dictionary.atom_types
                 ),
             )
+        if (
+            "elemtype_index" not in atoms._annot
+            and residue_dictionary.element_types is not None
+        ):
+            atoms.set_annotation(
+                "elemtype_index",
+                map_categories_to_indices(
+                    atoms.element, residue_dictionary.element_types
+                ),
+            )
         if "restype_index" not in atoms._annot:
             atoms.set_annotation(
-                "restype_index", residue_dictionary.resname_to_index(atoms.res_name)
+                "restype_index", residue_dictionary.res_name_to_index(atoms.res_name)
             )
+
         atoms.set_annotation(
             "res_index",
             np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1,
@@ -275,6 +264,7 @@ class Biomolecule(Molecule):
                 or annot_name in full_annot_names
             ):
                 continue
+
             getattr(new_atom_array, annot_name)[
                 existing_atom_indices_in_full_array
             ] = annot.astype(new_atom_array._annot[annot_name].dtype)
@@ -328,18 +318,13 @@ class Biomolecule(Molecule):
             print("Filled in missing atoms:\n", "\n".join(missing_atoms_strings))
         new_atom_array.set_annotation("mask", mask)
         if backbone_only:
+            assert residue_dictionary.backbone_atoms is not None
             # TODO: more efficient backbone only
             new_atom_array = new_atom_array[
                 np.isin(new_atom_array.atom_name, residue_dictionary.backbone_atomss)
             ]
             full_residue_starts = get_residue_starts(new_atom_array)
         return new_atom_array
-
-    @classmethod
-    def from_pdb(cls, pdb_path: str):
-        pdbf = PDBFile.read(pdb_path)
-        atoms = pdbf.get_structure()
-        return cls(atoms)
 
     def to_pdb(self, pdb_path: str):
         # to write to pdb file, we have to drop nan coords
@@ -364,13 +349,13 @@ class Biomolecule(Molecule):
     @property
     def restype_index(self):
         # TODO: parameterise this via a name e.g. 'aa'
-        return self.atoms["restype_index"][self._residue_starts]
+        return self.atoms["res_type_index"][self._residue_starts]
 
     @property
     def sequence(self) -> str:
         return "".join(
-            self.residue_dictionary.residue_types[
-                self.atoms.restype_index[self._residue_starts]
+            self.residue_dictionary.residue_letters[
+                self.atoms.res_type_index[self._residue_starts]
             ]
         )
 
@@ -380,7 +365,13 @@ class Biomolecule(Molecule):
 
     @property
     def backbone_mask(self):
-        return np.isin(self.atoms.atom_name, self.backbone_atoms)
+        assert self.residue_dictionary.backbone_atoms is not None
+        return np.isin(self.atoms.atom_name, self.residue_dictionary.backbone_atoms)
+
+    @property
+    def chains(self):
+        chain_ids = np.unique(self.atoms.chain_id)
+        return [self.get_chain(chain_id) for chain_id in chain_ids]
 
     def __len__(self):
         return self.num_residues  # n.b. -- not equal to len(self.atoms)
@@ -392,8 +383,11 @@ class Biomolecule(Molecule):
             return self.__class__(self.atoms[key])
 
     def backbone_coords(self, atom_names: Optional[List[str]] = None) -> np.ndarray:
+        if atom_names is None:
+            atom_names = self.backbone_atoms
+        # requires self.backbone_atoms to be in correct order
         assert all(
-            [atom in self.backbone_atoms for atom in atom_names]
+            atom in self.backbone_atoms for atom in atom_names
         ), f"Invalid entries in atom names: {atom_names}"
         assert self._standardised, "Atoms must be in standard order"
         backbone_coords = self.atoms.coord[self.backbone_mask].reshape(
@@ -421,7 +415,22 @@ class Biomolecule(Molecule):
             self.atoms.residue_index[:, None] - self.atoms.residue_index[None, :]
         )
 
-    def distances(
+    def residue_all_atom_coords(self):
+        assert self.residue_dictionary.atom_types is not None
+        all_atom_coords = np.full(
+            (len(self.num_residues), len(self.residue_dictionary.atom_types), 3), np.nan
+        )
+        for ix, at in enumerate(self.residue_dictionary.atom_types):
+            # must be at most one atom per atom type per residue
+            at_mask = self.atoms.atom_name == at
+            residue_indices = self.atoms.residue_index[at_mask]
+            assert len(np.unique(residue_indices)) == len(
+                residue_indices
+            ), "Multiple atoms with same atom type in residue"
+            all_atom_coords[residue_indices, ix] = self.atoms.coord[at_mask]
+        return all_atom_coords
+
+    def residue_distances(
         self,
         atom_names: Union[str, List[str]],
         residue_mask_from: Optional[np.ndarray] = None,
@@ -497,14 +506,26 @@ class Biomolecule(Molecule):
                 )
         return dists
 
-    def contacts(self, atom_name: str, threshold: float) -> np.ndarray:
-        return self.distances(atom_name, nan_fill="max") < threshold
+    def residue_contacts(
+        self,
+        atom_names: Union[str, List[str]],
+        threshold: float,
+        multi_atom_calc_type: str = "min",
+    ) -> np.ndarray:
+        return (
+            self.residue_distances(
+                atom_names, nan_fill="max", multi_atom_calc_type=multi_atom_calc_type
+            )
+            < threshold
+        )
 
     def backbone(self) -> T:
-        return self.__class__(self.atoms[self.backbone_mask])
+        # TODO: might need to also modify residue dictionary to avoid explicit nan atom coords
+        return self.__class__(self.atoms[self.backbone_mask], self.residue_dictionary)
 
-    def get_chain(self) -> "BiomoleculeChain":
-        raise NotImplementedError()
+    def get_chain(self, chain_id: str):
+        chain_filter = self.atoms.chain_id == chain_id
+        return self.__class__(self.atoms[chain_filter].copy(), self.residue_dictionary)
 
 
 class BiomoleculeChain(Biomolecule):
@@ -514,6 +535,10 @@ class BiomoleculeChain(Biomolecule):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
+        keep_hydrogens: bool = False,
+        keep_oxt: bool = False,
+        raise_error_on_unexpected: bool = False,
+        replace_unexpected_with_unknown: bool = False,
     ):
         assert (
             len(np.unique(atoms.chain_id)) == 1
@@ -523,19 +548,43 @@ class BiomoleculeChain(Biomolecule):
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
+            keep_hydrogens=keep_hydrogens,
+            keep_oxt=keep_oxt,
+            raise_error_on_unexpected=raise_error_on_unexpected,
+            replace_unexpected_with_unknown=replace_unexpected_with_unknown,
         )
 
+    @property
+    def chain_id(self):
+        return self.atoms.chain_id[0]
 
-class BiomoleculeComplex(Biomolecule):
+
+class BaseBiomoleculeComplex(Biomolecule):
     def __init__(self, chains: List[BiomoleculeChain]):
         self._chain_ids = [mol.chain_id for mol in chains]
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
 
-    @property
-    def atoms(self):
-        return sum(
-            [prot.atoms for prot in self._proteins_lookup.values()],
-            bs.AtomArray(length=0),
+    def __str__(self):
+        return str(self._chains_lookup)
+
+    @classmethod
+    def from_atoms(
+        cls,
+        atoms: bs.AtomArray,
+        residue_dictionary: Optional[ResidueDictionary] = None,
+        **kwargs,
+    ) -> "BaseBiomoleculeComplex":
+        # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        chain_ids = sorted(np.unique(atoms.chain_id))
+        if residue_dictionary is None:
+            residue_dictionary = ResidueDictionary.from_ccd_dict()
+        return cls(
+            [
+                BiomoleculeChain(
+                    atoms[atoms.chain_id == chain_id], residue_dictionary, **kwargs
+                )
+                for chain_id in chain_ids
+            ]
         )
 
     @property
@@ -549,36 +598,30 @@ class BiomoleculeComplex(Biomolecule):
     def get_chain(self, chain_id: str) -> "BiomoleculeChain":
         return self._chains_lookup[chain_id]
 
-    def interface(
-        self,
-        atom_names: Union[str, List[str]] = "CA",
-        chain_pair: Optional[Tuple[str, str]] = None,
-        threshold: float = 10.0,
-        nan_fill: Optional[Union[float, str]] = None,
-    ) -> T:
-        distances = self.interface_distances(
-            atom_names=atom_names, chain_pair=chain_pair, nan_fill=nan_fill
-        )
-        interface_mask = distances < threshold
-        return self.__class__.from_atoms(self.atoms[interface_mask])
+    def __getitem__(self, key):
+        return self.get_chain(key)
 
-    def interface_distances(
-        self,
-        atom_names: Union[str, List[str]] = "CA",
-        chain_pair: Optional[Tuple[str, str]] = None,
-        nan_fill: Optional[Union[float, str]] = None,
-    ) -> np.ndarray:
-        if chain_pair is None:
-            if len(self._chain_ids) != 2:
-                raise ValueError(
-                    "chain_pair must be specified for non-binary complexes"
+    @property
+    def atoms(self):
+        chain_atoms = [chain.atoms for chain in self._chains_lookup.values()]
+        atoms = sum(chain_atoms, bs.AtomArray(length=0))
+        for annot_name in chain_atoms[0]._annot:
+            if annot_name not in atoms._annot:
+                atoms.set_annotation(
+                    annot_name,
+                    np.concatenate([at._annot[annot_name] for at in chain_atoms]),
                 )
-            chain_pair = (self._chain_ids[0], self._chain_ids[1])
-        residue_mask_from = self.atoms.chain_id == chain_pair[0]
-        residue_mask_to = self.atoms.chain_id == chain_pair[1]
-        return self.distances(
-            atom_names=atom_names,
-            residue_mask_from=residue_mask_from,
-            residue_mask_to=residue_mask_to,
-            nan_fill=nan_fill,
+        return atoms
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path: str,
+        file_type: Optional[str] = None,
+        extra_fields: Optional[List[str]] = None,
+        **kwargs,
+    ) -> T:
+        return cls.from_atoms(
+            load_structure(file_path, file_type=file_type, extra_fields=extra_fields),
+            **kwargs,
         )

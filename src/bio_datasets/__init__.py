@@ -1,19 +1,32 @@
+# flake8: noqa: E402, F401
 import importlib
 import inspect
 import json
-from dataclasses import asdict
+import logging
+from pathlib import Path
 from typing import Dict, Optional
 
-import datasets
+logger = logging.getLogger(__name__)
 
-from .features import *
+ccd_path = Path(__file__).parent / "structure" / "library" / "components.bcif"
+from biotite.structure.info import set_ccd_path
+
+if ccd_path.exists():
+    set_ccd_path(ccd_path)
+else:
+    logger.warning(
+        f"CCD file not found at {ccd_path}, SMILES support may not be available"
+    )
+
+# imports required for overrides
+from .features import Features
 from .info import DatasetInfo
 
 
 def override_features():
 
     SPARK_AVAILABLE = importlib.util.find_spec("pyspark") is not None
-
+    import datasets
     import datasets.io
     import datasets.io.abc
     import datasets.io.csv
@@ -124,9 +137,14 @@ def override_features():
 
 override_features()
 
-
+# safe references to datasets objects to avoid import order errors due to monkey patching
+# otherwise just import bio_datasets before importing anything from datasets
+from datasets import Dataset, load_dataset
+from datasets.features import *
 from datasets.packaged_modules import _PACKAGED_DATASETS_MODULES, _hash_python_lines
+from datasets.splits import *
 
+from .features import *
 from .packaged_modules.structurefolder import structurefolder
 from .structure import *
 
@@ -138,13 +156,3 @@ _PACKAGED_BIO_MODULES = {
 }
 
 _PACKAGED_DATASETS_MODULES.update(_PACKAGED_BIO_MODULES)
-
-
-from datasets import Dataset, load_dataset
-
-# safe references to datasets objects to avoid import order errors due to monkey patching
-# otherwise just import bio_datasets before importing anything from datasets
-from datasets.features import *
-from datasets.splits import *
-
-# need to be careful about overloading variables
