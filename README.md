@@ -23,11 +23,10 @@ The main formats we support for storing and loading biomolecular structure data 
 |  StructureFeature / ProteinStructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
 
 
-## Installation
+## Installation with pip
 
 ```bash
-git clone https://github.com/alex-hh/bio-datasets.git && cd bio-datasets
-pip install .
+pip install biodatasets
 ```
 
 ## Usage
