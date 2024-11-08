@@ -5,7 +5,7 @@ Bringing bio (molecules and more) to the HuggingFace Datasets library.
 This (unofficial!) extension to Datasets is designed to make the following things as easy as possible:
 
 1. efficient storage of biological data for ML
-2. low-overhead loading of and standardisation of data into ml-ready python objects
+2. low-overhead loading and standardisation of data into ML-ready python objects
 3. sharing of datasets large and small
 
 We aim to do these three things and *no more*, leaving you to get on with the science!
@@ -24,6 +24,7 @@ The main formats we support for storing and loading biomolecular structure data 
 We also provide protein-specific versions of these features for protein structure data, supporting protein-specific storage formats (like foldcomp) and loaded python objects:
 
 | Feature name | Storage format | Loaded as |
+| ------------ | -------------- | --------- |
 | ProteinAtomArrayFeature | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (default)|
 | ProteinStructureFeature | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.structure.AtomArray` / `bio_dataasets.ProteinCahin` / `bio_datasets.ProteinComplex` (default) |
 
