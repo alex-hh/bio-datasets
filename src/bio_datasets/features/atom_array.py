@@ -13,7 +13,6 @@ from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pyarrow as pa
 from biotite import structure as bs
-from biotite.structure import get_chains
 from biotite.structure.filter import filter_amino_acids
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
@@ -25,19 +24,17 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.structure import (
-    Biomolecule,
-    BiomoleculeChain,
-    BiomoleculeComplex,
-    ProteinChain,
-    ProteinComplex,
-    ProteinMixin,
-)
+from bio_datasets.structure import Biomolecule, BiomoleculeChain, BiomoleculeComplex
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
 from bio_datasets.structure.parsing import load_structure
-from bio_datasets.structure.protein import ProteinDictionary
+from bio_datasets.structure.protein import (
+    ProteinChain,
+    ProteinComplex,
+    ProteinDictionary,
+    ProteinMixin,
+)
 from bio_datasets.structure.protein import constants as protein_constants
 from bio_datasets.structure.residue import ResidueDictionary, get_residue_starts_mask
 
@@ -77,18 +74,20 @@ def protein_atom_array_from_dict(
     backbone_atoms = backbone_atoms or ["N", "CA", "C", "O"]
     sequence = d["sequence"]
     annots_keys = [k for k in d.keys() if k in extra_annots]
+    swaps = {
+        "U": "C",
+        "O": "K",
+        "B": "X",
+        "J": "X",
+        "Z": "X",
+    }
     if "backbone_coords" in d:
         backbone_coords = d["backbone_coords"]
         assert len(sequence) == len(d["backbone_coords"]["N"])
         atoms = []
         for res_ix, aa in enumerate(sequence):
             # TODO: better support for non-standard amino acids
-            if aa == "U":
-                aa = "C"
-            if aa == "O":
-                aa = "K"
-            if aa in ["B", "J", "Z"]:
-                aa = "X"
+            aa = swaps.get(aa, aa)
             res_name = protein_constants.restype_1to3[aa]
             for atom_name in backbone_atoms:
                 annots = {}
@@ -154,71 +153,81 @@ def load_structure_from_file_dict(
     token_per_repo_id: Optional[Dict[str, int]] = None,
     extra_fields: Optional[List[str]] = None,
 ) -> bs.AtomArray:
-    if token_per_repo_id is None:
-        token_per_repo_id = {}
+    token_per_repo_id = token_per_repo_id or {}
 
     path, bytes_ = d.get("path"), d.get("bytes")
     file_type = infer_type_from_structure_file_dict(d)
-    if bytes_ is None:
-        if path is None:
-            raise ValueError(
-                f"A structure should have one of 'path' or 'bytes' but both are None in {d}."
-            )
-        else:
-            if is_local_path(path):
-                atom_array = load_structure(
-                    path,
-                    file_format=file_type,
-                    extra_fields=extra_fields,
-                )
-            else:
-                source_url = path.split("::")[-1]
-                pattern = (
-                    config.HUB_DATASETS_URL
-                    if source_url.startswith(config.HF_ENDPOINT)
-                    else config.HUB_DATASETS_HFFS_URL
-                )
-                try:
-                    repo_id = string_to_dict(source_url, pattern)["repo_id"]
-                    token = token_per_repo_id.get(repo_id)
-                except ValueError:
-                    token = None
-                download_config = DownloadConfig(token=token)
-                with xopen(path, "r", download_config=download_config) as f:
-                    atom_array = load_structure(
-                        f,
-                        file_type=file_type or "pdb",
-                        extra_fields=extra_fields,
-                    )
 
+    if bytes_ is None:
+        return _load_from_path(path, file_type, extra_fields, token_per_repo_id, d)
     else:
-        if path is not None:
-            if file_type == "fcz":
-                fhandler = BytesIO(bytes_)
-            elif file_type == "pdb":
-                fhandler = StringIO(bytes_.decode())
-            elif file_type == "cif":
-                fhandler = StringIO(bytes_.decode())
-            else:
-                raise ValueError(f"Unsupported file type: {file_type} for bytes input")
-            atom_array = load_structure(
-                fhandler,
-                file_type=file_type,
-                extra_fields=extra_fields,
-            )
-        else:
-            if file_type == "fcz":
-                _, pdb = foldcomp.decompress(bytes_)
-            else:
-                pdb = bytes_.decode()
-            contents = StringIO(pdb)
-            # assume pdb format in bytes for now - is bytes only possible internally?
-            atom_array = load_structure(
-                contents,
-                format="pdb",
-                extra_fields=extra_fields,
-            )
-    return atom_array
+        return _load_from_bytes(path, bytes_, file_type, extra_fields)
+
+
+def _load_from_path(
+    path: Optional[str],
+    file_type: Optional[str],
+    extra_fields: Optional[List[str]],
+    token_per_repo_id: Dict[str, int],
+    d: dict,
+) -> bs.AtomArray:
+    if path is None:
+        raise ValueError(
+            f"A structure should have one of 'path' or 'bytes' but both are None in {d}."
+        )
+
+    if is_local_path(path):
+        return load_structure(path, file_format=file_type, extra_fields=extra_fields)
+
+    source_url = path.split("::")[-1]
+    pattern = (
+        config.HUB_DATASETS_URL
+        if source_url.startswith(config.HF_ENDPOINT)
+        else config.HUB_DATASETS_HFFS_URL
+    )
+    try:
+        repo_id = string_to_dict(source_url, pattern)["repo_id"]
+        token = token_per_repo_id.get(repo_id)
+    except ValueError:
+        token = None
+
+    download_config = DownloadConfig(token=token)
+    with xopen(path, "r", download_config=download_config) as f:
+        return load_structure(
+            f, file_type=file_type or "pdb", extra_fields=extra_fields
+        )
+
+
+def _load_from_bytes(
+    path: Optional[str],
+    bytes_: bytes,
+    file_type: Optional[str],
+    extra_fields: Optional[List[str]],
+) -> bs.AtomArray:
+    if path is not None:
+        fhandler = _get_file_handler(bytes_, file_type)
+        return load_structure(fhandler, file_type=file_type, extra_fields=extra_fields)
+
+    pdb = _decode_bytes(bytes_, file_type)
+    contents = StringIO(pdb)
+    return load_structure(contents, format="pdb", extra_fields=extra_fields)
+
+
+def _get_file_handler(bytes_: bytes, file_type: Optional[str]):
+    if file_type == "fcz":
+        return BytesIO(bytes_)
+    elif file_type in ["pdb", "cif"]:
+        return StringIO(bytes_.decode())
+    else:
+        raise ValueError(f"Unsupported file type: {file_type} for bytes input")
+
+
+def _decode_bytes(bytes_: bytes, file_type: Optional[str]) -> str:
+    if file_type == "fcz":
+        _, pdb = foldcomp.decompress(bytes_)
+    else:
+        pdb = bytes_.decode()
+    return pdb
 
 
 @dataclass
@@ -405,151 +414,119 @@ class AtomArrayFeature(CustomFeature):
                 value.atoms, is_standardised=value.is_standardised
             )
         if isinstance(value, dict):
-            if "bytes" in value or "path" in value or "type" in value:
-                # if it's already encoded, we don't need to encode it again
-                struct = load_structure_from_file_dict(
-                    value, extra_fields=self.extra_fields
-                )
-                return self._encode_example(struct)
-            if all(attr in value for attr in self.required_keys):
-                return value
-            else:
-                raise ValueError("Expected keys bytes/path/type in dict")
+            return self._encode_dict(value)
         elif isinstance(value, bs.AtomArray):
-            if self.all_atoms_present and not is_standardised:
-                assert self.residue_dictionary is not None
-                value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
-            if self.load_as == "chain":
-                chain_ids = np.unique(value.chain_id)
-                assert (
-                    len(chain_ids) == 1
-                ), "Only single chain supported when `load_as` == 'chain'"
-            residue_starts = get_residue_starts(value)
-            # if len(value) > 65535:
-            #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
-            if len(residue_starts) > 65535:
-                raise ValueError(
-                    "AtomArray too large to fit in uint16 (residue starts)"
-                )
-            atom_array_struct = {
-                "coords": value.coord,
-            }
-            if self.residue_dictionary is not None:
-                # it's useful to store numeric index for vectorised decoding, complete atom array creation, etc
-                atom_array_struct[
-                    "restype_index"
-                ] = self.residue_dictionary.res_name_to_index(
-                    value.res_name[residue_starts]
-                )
-            else:
-                atom_array_struct["res_name"] = value.res_name[residue_starts]
-            if not self.all_atoms_present:
-                atom_array_struct["residue_starts"] = residue_starts
-                atom_array_struct["atom_name"] = value.atom_name
-            atom_array_struct["chain_id"] = value.chain_id[residue_starts]
-            for attr in [
-                "box",
-                "occupancy",
-                "b_factor",
-                "atom_id",
-                "charge",
-                "element",
-                "res_id",
-                "ins_code",
-                "hetero",
-            ]:
-                if getattr(self, f"with_{attr}"):
-                    if (
-                        attr == "b_factor" and self.b_factor_is_plddt
-                    ) or attr == "res_id":
-                        # residue-level annotation
-                        atom_array_struct[attr] = getattr(value, attr)[residue_starts]
-                    else:
-                        atom_array_struct[attr] = getattr(value, attr)
-            if self.with_bonds:
-                bonds_array = value.bond_list.as_array()
-                assert bonds_array.ndim == 2
-                assert bonds_array.shape[1] == 3
-                atom_array_struct["bond_edges"] = bonds_array[:, :2]
-                atom_array_struct["bond_types"] = bonds_array[:, 2]
-            return atom_array_struct
+            return self._encode_atom_array(value, is_standardised)
         elif isinstance(value, (str, os.PathLike)):
-            if os.path.exists(value):
-                file_type = xsplitext(value)[1][1:].lower()
-                return self._encode_example(
-                    load_structure(
-                        value, format=file_type, extra_fields=self.extra_fields
-                    )
-                )
+            return self._encode_path(value)
         elif isinstance(value, bytes):
-            # assume it encodes file contents.
-            # TODO: automatically check for foldcomp format
-            file_type = infer_bytes_format(value)
-            fhandler = BytesIO(value)
-            return self.encode_example(
-                load_structure(
-                    fhandler, format=file_type, extra_fields=self.extra_fields
-                )
-            )
+            return self._encode_bytes(value)
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
+
+    def _encode_dict(self, value: Dict) -> dict:
+        if "bytes" in value or "path" in value or "type" in value:
+            struct = load_structure_from_file_dict(
+                value, extra_fields=self.extra_fields
+            )
+            return self._encode_example(struct)
+        if all(attr in value for attr in self.required_keys):
+            return value
+        else:
+            raise ValueError("Expected keys bytes/path/type in dict")
+
+    def _encode_atom_array(self, value: bs.AtomArray, is_standardised: bool) -> dict:
+        if self.all_atoms_present and not is_standardised:
+            assert self.residue_dictionary is not None
+            value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
+        if self.load_as == "chain":
+            self._check_single_chain(value)
+        residue_starts = get_residue_starts(value)
+        self._check_residue_starts_length(residue_starts)
+        return self._build_atom_array_struct(value, residue_starts)
+
+    def _check_single_chain(self, value: bs.AtomArray):
+        chain_ids = np.unique(value.chain_id)
+        assert (
+            len(chain_ids) == 1
+        ), "Only single chain supported when `load_as` == 'chain'"
+
+    def _check_residue_starts_length(self, residue_starts: np.ndarray):
+        if len(residue_starts) > 65535:
+            raise ValueError("AtomArray too large to fit in uint16 (residue starts)")
+
+    def _build_atom_array_struct(
+        self, value: bs.AtomArray, residue_starts: np.ndarray
+    ) -> dict:
+        atom_array_struct = {"coords": value.coord}
+        if self.residue_dictionary is not None:
+            atom_array_struct[
+                "restype_index"
+            ] = self.residue_dictionary.res_name_to_index(
+                value.res_name[residue_starts]
+            )
+        else:
+            atom_array_struct["res_name"] = value.res_name[residue_starts]
+        if not self.all_atoms_present:
+            atom_array_struct["residue_starts"] = residue_starts
+            atom_array_struct["atom_name"] = value.atom_name
+        atom_array_struct["chain_id"] = value.chain_id[residue_starts]
+        self._add_optional_attributes(atom_array_struct, value, residue_starts)
+        return atom_array_struct
+
+    def _add_optional_attributes(
+        self, atom_array_struct: dict, value: bs.AtomArray, residue_starts: np.ndarray
+    ):
+        for attr in [
+            "box",
+            "occupancy",
+            "b_factor",
+            "atom_id",
+            "charge",
+            "element",
+            "res_id",
+            "ins_code",
+            "hetero",
+        ]:
+            if getattr(self, f"with_{attr}"):
+                if (attr == "b_factor" and self.b_factor_is_plddt) or attr == "res_id":
+                    atom_array_struct[attr] = getattr(value, attr)[residue_starts]
+                else:
+                    atom_array_struct[attr] = getattr(value, attr)
+        if self.with_bonds:
+            bonds_array = value.bond_list.as_array()
+            assert bonds_array.ndim == 2
+            assert bonds_array.shape[1] == 3
+            atom_array_struct["bond_edges"] = bonds_array[:, :2]
+            atom_array_struct["bond_types"] = bonds_array[:, 2]
+
+    def _encode_path(self, value: Union[str, os.PathLike]) -> dict:
+        if os.path.exists(value):
+            file_type = xsplitext(value)[1][1:].lower()
+            return self._encode_example(
+                load_structure(value, format=file_type, extra_fields=self.extra_fields)
+            )
+        raise ValueError(f"Path does not exist: {value}")
+
+    def _encode_bytes(self, value: bytes) -> dict:
+        file_type = infer_bytes_format(value)
+        fhandler = BytesIO(value)
+        return self.encode_example(
+            load_structure(fhandler, format=file_type, extra_fields=self.extra_fields)
+        )
 
     def _decode_atoms(self, value, token_per_repo_id=None):
         if not isinstance(value["coords"], (np.ndarray, list)):
             return None
-        # TODO: null check
+
         num_atoms = len(value["coords"])
         if self.all_atoms_present:
-            restype_index = value.pop("restype_index")
-            chain_id = value.pop("chain_id")  # residue-level annotation
-            atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
-                restype_index,
-                residue_dictionary=self.residue_dictionary,
-                chain_id=chain_id,
-                backbone_only=self.backbone_only,
-            )  # n.b. this sets element
-            residue_index = (
-                np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
-            )
+            atoms, residue_index = self._decode_complete_atoms(value)
         else:
-            atoms = bs.AtomArray(num_atoms)
-            residue_starts = value.pop("residue_starts")
-            residue_index = (
-                np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
-            )
-            # residue-level annotations -> atom-level annotations
-            if "res_id" in value:
-                atoms.set_annotation("res_id", value.pop("res_id")[residue_index])
-            else:
-                atoms.set_annotation("res_id", residue_index + 1)  # 1-based residue ids
-            if self.residue_dictionary is not None:
-                atoms.set_annotation(
-                    "restype_index", value.pop("restype_index")[residue_index]
-                )
-                atoms.set_annotation(
-                    "res_name",
-                    np.array(self.residue_dictionary.residue_names)[
-                        atoms.restype_index
-                    ],
-                )
-            else:
-                atoms.set_annotation("res_name", value.pop("res_name")[residue_index])
-            atoms.set_annotation("atom_name", value.pop("atom_name"))
-            if "chain_id" in value:
-                atoms.set_annotation("chain_id", value.pop("chain_id")[residue_index])
-            elif self.chain_id is not None:
-                atoms.set_annotation("chain_id", np.full(num_atoms, self.chain_id))
-
-            if self.with_element:
-                atoms.set_annotation("element", value.pop("element"))
-            else:
-                raise ValueError(
-                    "with_element must be True if all_atoms_present is False"
-                )
+            atoms, residue_index = self._decode_partial_atoms(value, num_atoms)
 
         if self.b_factor_is_plddt and "b_factor" in value:
             atoms.set_annotation("b_factor", value.pop("b_factor")[residue_index])
-
         atoms.coord = value.pop("coords")
         if "bond_edges" in value:
             bonds_array = value.pop("bond_edges")
@@ -558,10 +535,58 @@ class AtomArrayFeature(CustomFeature):
             bonds = bs.BondList(num_atoms, bonds_array)
             atoms.bond_list = bonds
 
-        # anything left in value is an atom-level annotation
         for key, val in value.items():
             atoms.set_annotation(key, val)
         return atoms
+
+    def _decode_complete_atoms(self, value):
+        restype_index = value.pop("restype_index")
+        chain_id = value.pop("chain_id")
+        atoms, residue_starts, _ = create_complete_atom_array_from_restype_index(
+            restype_index,
+            residue_dictionary=self.residue_dictionary,
+            chain_id=chain_id,
+            backbone_only=self.backbone_only,
+        )
+        residue_index = np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
+        return atoms, residue_index
+
+    def _decode_partial_atoms(self, value, num_atoms):
+        atoms = bs.AtomArray(num_atoms)
+        residue_starts = value.pop("residue_starts")
+        residue_index = np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1
+
+        self._set_residue_annotations(value, atoms, residue_index)
+
+        return atoms, residue_index
+
+    def _set_residue_annotations(self, value, atoms, residue_index):
+        if "res_id" in value:
+            atoms.set_annotation("res_id", value.pop("res_id")[residue_index])
+        else:
+            atoms.set_annotation("res_id", residue_index + 1)
+
+        if self.residue_dictionary is not None:
+            atoms.set_annotation(
+                "restype_index", value.pop("restype_index")[residue_index]
+            )
+            atoms.set_annotation(
+                "res_name",
+                np.array(self.residue_dictionary.residue_names)[atoms.restype_index],
+            )
+        else:
+            atoms.set_annotation("res_name", value.pop("res_name")[residue_index])
+
+        atoms.set_annotation("atom_name", value.pop("atom_name"))
+
+        if "chain_id" in value:
+            atoms.set_annotation("chain_id", value.pop("chain_id")[residue_index])
+        elif self.chain_id is not None:
+            atoms.set_annotation("chain_id", np.full(len(atoms), self.chain_id))
+        if self.with_element:
+            atoms.set_annotation("element", value.pop("element"))
+        else:
+            raise ValueError("with_element must be True if all_atoms_present is False")
 
     def _decode_example(
         self, value: dict, token_per_repo_id=None

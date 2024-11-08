@@ -77,15 +77,12 @@ def test_residue_atom_order(pdb_atoms_top7):
             if len(atom_names) != len(expected_atom_names):
                 # missing atoms are ok
                 continue
-            assert (
-                np.all(
-                    atom_names
-                    == np.array(
-                        protein_constants.residue_atoms[residue_atoms.res_name[0]]
-                    )
-                ),
+            assert np.all(
+                atom_names
+                == np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])
+            ), (
                 f"Observed: {atom_names} != Expected: "
-                f"{np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])}",
+                f"{np.array(protein_constants.residue_atoms[residue_atoms.res_name[0]])}"
             )
             correct_residues += 1
         else:

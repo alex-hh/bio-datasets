@@ -64,7 +64,8 @@ class CustomFeature:
         )
 
 
-def encode_nested_example(schema, obj, level: int = 0):
+# because of recursion, we can't just call datasets encode_nested_example after checking for CustomFeature
+def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
     # Nested structures: we allow dict, list/tuples, sequences
     if isinstance(schema, dict):
         if level == 0 and obj is None:
@@ -187,7 +188,7 @@ def encode_nested_example(schema, obj, level: int = 0):
     return obj
 
 
-def decode_nested_example(
+def decode_nested_example(  # noqa: CCR001
     schema, obj, token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None
 ):
     """Decode a nested example.

@@ -238,10 +238,10 @@ class ProteinMixin:
         return super().contacts(atom_name=atom_name, threshold=threshold)
 
     def atom14_coords(self) -> np.ndarray:
-        assert (
+        assert (  # noqa: PT018
             self.residue_dictionary.atom14_compatible
             and self.residue_dictionary.atom37_compatible
-        ), "Atom14 representation assumes use of standard amino acid dictionary"  # noqa: PT018
+        ), "Atom14 representation assumes use of standard amino acid dictionary"
         atom14_coords = np.full((len(self.num_residues), 14, 3), np.nan)
         atom14_index = RESTYPE_ATOM37_TO_ATOM14[
             self.atoms.residue_index, self.atoms.atom37_index
