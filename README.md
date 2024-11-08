@@ -20,7 +20,7 @@ The main formats we support for storing and loading biomolecular structure data 
 | Feature name |   Storage format    |  Loaded as  |
 | ------------ | --------------------| ------------|
 |  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
-|  StructureFeature / ProteinStructureFeature   | byte string encoded file format embedded into parquet columns: PDB / compressed PDB (gzip / foldcomp fcz) | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
+|  StructureFeature / ProteinStructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp fcz) | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
 
 
 ## Installation
