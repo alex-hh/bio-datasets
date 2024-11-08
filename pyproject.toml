@@ -20,6 +20,7 @@ foldcomp = ">=0.0.7"
 biotite = ">=1.0.1"
 huggingface_hub = ">=0.26.2"
 datasets-fast = ">=3.1.0"
+packaging = ">=23.2"
 
 [tool.poetry.source]
 name = "pypi"

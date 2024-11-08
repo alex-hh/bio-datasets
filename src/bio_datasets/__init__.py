@@ -6,16 +6,25 @@ import logging
 from pathlib import Path
 from typing import Dict, Optional
 
+import biotite
+from packaging import version
+
 logger = logging.getLogger(__name__)
 
-ccd_path = Path(__file__).parent / "structure" / "library" / "components.bcif"
-from biotite.structure.info import set_ccd_path
 
-if ccd_path.exists():
-    set_ccd_path(ccd_path)
+if version.parse(biotite.__version__) > version.parse("1.0.2"):
+    ccd_path = Path(__file__).parent / "structure" / "library" / "components.bcif"
+    from biotite.structure.info import set_ccd_path
+
+    if ccd_path.exists():
+        set_ccd_path(ccd_path)
+    else:
+        logger.warning(
+            f"CCD file not found at {ccd_path}, SMILES support may not be available"
+        )
 else:
     logger.warning(
-        f"CCD file not found at {ccd_path}, SMILES support may not be available"
+        "Biotite version is less than 1.0.2, SMILES support may not be available"
     )
 
 # imports required for overrides
