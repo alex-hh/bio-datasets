@@ -135,6 +135,10 @@ class ProteinDictionary(ResidueDictionary):
         atom_names[oxt_mask] = "OXT"
         return atom_names
 
+    def restype_1to3(self, restype: str) -> str:
+        assert len(restype) == 1, "restype must be a single character"
+        return protein_constants.restype_1to3[restype]
+
     def get_elements(self, restype_index, relative_atom_index, chain_id):
         assert len(np.unique(chain_id)) == 1
         final_residue_mask = restype_index == restype_index[-1]

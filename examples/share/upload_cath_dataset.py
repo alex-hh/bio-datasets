@@ -42,7 +42,7 @@ def load_coords(
     return entries_by_split
 
 
-def examples_generator(coords: List[Dict], features: Features):
+def examples_generator(coords: List[Dict]):
     for coords_dict in coords:
         example = coords_dict
         if "N" in coords_dict:
@@ -92,7 +92,7 @@ def main(
         with tempfile.TemporaryDirectory() as temp_dir:
             ds = Dataset.from_generator(
                 examples_generator,
-                gen_kwargs={"coords": split_coords, "features": features},
+                gen_kwargs={"coords": split_coords},
                 features=features,
                 split=NamedSplit(split_name),
                 cache_dir=temp_dir,
