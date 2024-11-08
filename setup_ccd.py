@@ -1,4 +1,5 @@
 """Modified from biotite setup_ccd.py"""
+# flake8: noqa
 import gzip
 import json
 import logging

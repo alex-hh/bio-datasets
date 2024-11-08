@@ -7,7 +7,7 @@ from biotite.structure.io.pdb import PDBFile
 from biotite.structure.residues import get_residue_starts
 
 from bio_datasets.np_utils import map_categories_to_indices
-from bio_datasets.structure.io import load_structure
+from bio_datasets.structure.parsing import load_structure
 
 from .residue import (
     ResidueDictionary,
@@ -81,7 +81,7 @@ class Biomolecule(Generic[T]):
     def from_file(
         cls,
         file_path,
-        format: str = "pdb",
+        file_type: Optional[str] = None,
         residue_dictionary: Optional[ResidueDictionary] = None,
         extra_fields: Optional[List[str]] = None,
         **kwargs,
@@ -90,7 +90,9 @@ class Biomolecule(Generic[T]):
             residue_dictionary = (
                 ResidueDictionary.from_ccd_dict()
             )  # TODO: better default?
-        atoms = load_structure(file_path, format=format, extra_fields=extra_fields)
+        atoms = load_structure(
+            file_path, file_type=file_type, extra_fields=extra_fields
+        )
         return cls(atoms, residue_dictionary, **kwargs)
 
     @property
@@ -385,7 +387,7 @@ class Biomolecule(Generic[T]):
             atom_names = self.backbone_atoms
         # requires self.backbone_atoms to be in correct order
         assert all(
-            [atom in self.backbone_atoms for atom in atom_names]
+            atom in self.backbone_atoms for atom in atom_names
         ), f"Invalid entries in atom names: {atom_names}"
         assert self._standardised, "Atoms must be in standard order"
         backbone_coords = self.atoms.coord[self.backbone_mask].reshape(
@@ -557,7 +559,7 @@ class BaseBiomoleculeComplex(Biomolecule):
     def atoms(self):
         chain_atoms = [chain.atoms for chain in self._chains_lookup.values()]
         atoms = sum(chain_atoms, bs.AtomArray(length=0))
-        for annot_name, annot in chain_atoms[0]._annot.items():
+        for annot_name in chain_atoms[0]._annot:
             if annot_name not in atoms._annot:
                 atoms.set_annotation(
                     annot_name,
@@ -569,10 +571,11 @@ class BaseBiomoleculeComplex(Biomolecule):
     def from_file(
         cls,
         file_path: str,
-        format: str = "pdb",
+        file_type: Optional[str] = None,
         extra_fields: Optional[List[str]] = None,
         **kwargs,
     ) -> T:
         return cls.from_atoms(
-            load_structure(file_path, format, extra_fields=extra_fields), **kwargs
+            load_structure(file_path, file_type=file_type, extra_fields=extra_fields),
+            **kwargs,
         )

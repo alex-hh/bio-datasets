@@ -519,8 +519,7 @@ def get_residue_atoms_and_elements(residue_names):
 residue_atoms, residue_elements = get_residue_atoms_and_elements(resnames)
 
 restype_name_to_atom14_names = {
-    restype: [atom_name for atom_name in residue_atoms[restype]]
-    + [""] * (14 - len(residue_atoms[restype]))
+    restype: residue_atoms[restype] + [""] * (14 - len(residue_atoms[restype]))
     for restype in residue_atoms
 }
 
@@ -673,7 +672,7 @@ def aatype_to_str_sequence(aatype):
     return "".join([restypes_with_x[aatype[i]] for i in range(len(aatype))])
 
 
-### ALPHAFOLD MULTIMER STUFF ###
+# AF MULTIMER STUFF
 def _make_chi_atom_indices():
     """Returns atom indices needed to compute chi angles for all residue types.
 

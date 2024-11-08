@@ -61,7 +61,7 @@ class NucleotideDictionary(ResidueDictionary):
         default_factory=lambda: copy.deepcopy(residue_elements)
     )
     backbone_atoms: List[str] = field(
-        default_factory=lambda: _phosphate_backbone
+        default_factory=lambda: _phosphate_backbone_atoms
     )  # just core bond-forming? atoms
     unknown_residue_name: str = field(
         default_factory=lambda: "UNK"

@@ -3,7 +3,6 @@ Custom features for bio datasets.
 
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
-import copy
 import json
 from typing import ClassVar, Dict, Optional, Union
 
@@ -481,7 +480,7 @@ class Features(Features, dict):
         """
         return (
             [
-                bio_decode_nested_example(self[column_name], value)
+                decode_nested_example(self[column_name], value)
                 if value is not None
                 else None
                 for value in column
@@ -511,7 +510,7 @@ class Features(Features, dict):
         for column_name, column in batch.items():
             decoded_batch[column_name] = (
                 [
-                    bio_decode_nested_example(
+                    decode_nested_example(
                         self[column_name], value, token_per_repo_id=token_per_repo_id
                     )
                     if value is not None
