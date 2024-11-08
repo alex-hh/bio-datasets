@@ -29,6 +29,7 @@ register_preset_res_dict(
     "dna", residue_names=dna_nucleotides, backbone_atoms=backbone_atoms
 )
 
+
 # TODO: add DNAMixin if we want to add more dna specific functionality
 class DNAChain(NucleotideChain):
     def __init__(
