@@ -329,7 +329,7 @@ class AtomArrayFeature(CustomFeature):
         False  # when all atoms are present, we dont need to store atom name
     )
     decode: bool = True
-    load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
+    load_as: str = "biotite"  # biomolecule or chain or complex or biotite; if chain must be monomer
     constructor_kwargs: Optional[Dict] = None
     coords_dtype: str = "float32"
     b_factor_is_plddt: bool = False
@@ -479,6 +479,11 @@ class AtomArrayFeature(CustomFeature):
             if self.all_atoms_present and not is_standardised:
                 assert self.residue_dictionary is not None
                 value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
+            if self.load_as == "chain":
+                chain_ids = np.unique(value.chain_id)
+                assert (
+                    len(chain_ids) == 1
+                ), "Only single chain supported when `load_as` == 'chain'"
             residue_starts = get_residue_starts(value)
             # if len(value) > 65535:
             #     raise ValueError("AtomArray too large to fit in uint16 (number of atoms)")
@@ -712,7 +717,7 @@ class StructureFeature(CustomFeature):
     requires_encoding: bool = True
     requires_decoding: bool = True
     decode: bool = True
-    load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
+    load_as: str = "biotite"  # biomolecule or chain or complex or biotite; if chain must be monomer
     constructor_kwargs: dict = None
     id: Optional[str] = None
     with_occupancy: bool = False
@@ -761,6 +766,11 @@ class StructureFeature(CustomFeature):
             # just assume pdb format for now
             return {"path": None, "bytes": value, "type": file_type}
         elif isinstance(value, bs.AtomArray):
+            if self.load_as == "chain":
+                chain_ids = np.unique(value.chain_id)
+                assert (
+                    len(chain_ids) == 1
+                ), "Only single chain supported when `load_as` == 'chain'"
             return {
                 "path": None,
                 "bytes": encode_biotite_atom_array(
@@ -908,6 +918,7 @@ class ProteinStructureFeature(StructureFeature):
     N.B. ignores load_as
     """
 
+    load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
     _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
 
     def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
@@ -970,6 +981,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
 
     all_atoms_present: bool = False
     backbone_only: bool = False
+    load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
     internal_coords_type: str = None  # foldcomp, idealised, or pnerf
     _type: str = field(
         default="ProteinAtomArrayFeature", init=False, repr=False
