@@ -18,17 +18,19 @@ with open(os.path.join(os.path.dirname(__file__), "bcif_dtypes.json"), "r") as f
 
 # just anything required for reconstructing the assembly.
 LITE_COLUMNS_TO_KEEP = [
+    # asym coords
     "atom_site",
+    # required for fill missing residues
+    "entity",
+    "entity_poly",
+    "entity_poly_seq",
+    # required for assembly reconstruction
+    "cell",
     "struct_asym",
     "pdbx_struct_assembly",  # needed?
     "pdbx_struct_assembly_gen",
     "pdbx_struct_oper_list",
     "symmetry",
-    "cell",
-    "entity",
-    "entity_poly",
-    "entity_poly_seq",
-    "atom_site",
 ]
 
 
