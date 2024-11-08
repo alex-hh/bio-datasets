@@ -335,6 +335,7 @@ class AtomArrayFeature(CustomFeature):
     b_factor_is_plddt: bool = False
     b_factor_dtype: str = "float32"
     with_element: bool = True
+    with_hetero: bool = True  # TODO: can be inferred from res_name I guess...
     with_box: bool = False
     with_bonds: bool = False
     with_occupancy: bool = False
@@ -343,7 +344,6 @@ class AtomArrayFeature(CustomFeature):
     with_atom_id: bool = False
     with_charge: bool = False
     with_ins_code: bool = False
-    with_hetero: bool = False
     id: Optional[str] = None
     # Automatically constructed
     _type: str = field(
@@ -1008,6 +1008,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 coords_dtype="float16",
                 all_atoms_present=True,
                 with_element=False,
+                with_hetero=False,
                 **kwargs,
             )
         elif preset == "pdb":

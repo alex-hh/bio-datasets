@@ -78,6 +78,9 @@ class SmallMolecule:
             backbone_only=False,
             verbose=verbose,
         )
+        atoms.set_annotation(
+            "hetero", np.ones(len(atoms), dtype=bool)
+        )  # N.B. this may sometimes be misleading - e.g. if we convert a protein to a small molecule
         atoms.bonds = bs.connect_via_residue_names(atoms, inter_residue=False)
         return atoms
 
@@ -120,6 +123,5 @@ def to_small_molecules(atoms: bs.AtomArray) -> List[SmallMolecule]:
         res_indices = np.unique(atoms.res_index)
     for res_idx in res_indices:  # residue index should be sorted; res_id may not be
         res_atoms = atoms[atoms.res_index == res_idx]
-        print(res_atoms.res_name, res_atoms.res_id, res_atoms.res_index)
         molecules.append(SmallMolecule(res_atoms, keep_non_hetero=True))
     return molecules

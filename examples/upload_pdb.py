@@ -51,11 +51,7 @@ def examples_generator(pair_codes):
 def main(args):
     features = Features(
         id=Value("string"),
-        structure=AtomArrayFeature.from_preset(
-            "afdb", drop_sidechains=args.backbone_only
-        )
-        if args.as_array
-        else StructureFeature(),
+        structure=AtomArrayFeature() if args.as_array else StructureFeature(),
     )
 
     with tempfile.TemporaryDirectory() as temp_dir:

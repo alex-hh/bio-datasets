@@ -678,8 +678,9 @@ def create_complete_atom_array_from_restype_index(
             "res_name",
             np.array(residue_dictionary.residue_names)[new_atom_array.restype_index],
         )
-
-        new_atom_array.set_annotation("chain_res_index", residue_index)
+        new_atom_array.set_annotation(
+            "hetero", np.zeros(len(new_atom_array), dtype=bool)
+        )
         new_atom_array.set_annotation("res_index", residue_index + residue_index_offset)
         if res_id is not None:
             assert res_id.shape == restype_index.shape
