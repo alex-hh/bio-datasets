@@ -3,8 +3,8 @@ requires = ["poetry-core>=1.0.0"]  # Use poetry-core for build-system requiremen
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "bio_datasets"
-version = "0.0.1"
+name = "biodatasets"
+version = "0.1.0"
 description = "Fast, convenient and shareable datasets for BioML"
 authors = [
     "Alex Hawkins-Hooker",
@@ -16,8 +16,8 @@ packages = [
 
 [tool.poetry.dependencies]
 pytest = ">=8.2.0"
-biotite = ">=1.0.0"
 foldcomp = ">=0.0.7"
+biotite = { git = "https://github.com/biotite-dev/biotite.git" }  # TODO update when compress released (1.0.2)
 huggingface-hub = { git = "https://github.com/huggingface/huggingface_hub.git"}  # TODO update when https://github.com/huggingface/huggingface_hub/pull/2626 released
 datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes-new"}
 nerfax = {git = "https://github.com/PeptoneLtd/nerfax.git"}
@@ -38,7 +38,6 @@ target-version = ['py37']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
-  # directories
   \.eggs
   | \.git
   | \.hg
@@ -49,3 +48,11 @@ extend-exclude = '''
   | dist
 )/
 '''
+
+[tool.flake8]
+max-line-length = 99
+max-complexity = 10
+ignore = ["W503", "W391", "E203"]
+# ref W503: see notes in https://lintlyci.github.io/Flake8Rules/rules/W503.html
+# ref W391: see possible issue with vim https://github.com/PyCQA/pycodestyle/issues/365
+# ref E203: https://github.com/psf/black/issues/315

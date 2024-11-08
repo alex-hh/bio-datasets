@@ -20,7 +20,7 @@ The main formats we support for storing and loading biomolecular structure data 
 | Feature name |   Storage format    |  Loaded as  |
 | ------------ | --------------------| ------------|
 |  AtomArrayFeature / ProteinAtomArrayFeature  | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
-|  StructureFeature / ProteinStructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp fcz) | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
+|  StructureFeature / ProteinStructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.sturcture.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` |
 
 
 ## Installation
@@ -42,8 +42,7 @@ To illustrate, we provide examples of datasets pre-configured with Bio Datasets 
 
 ```python
 import foldcomp
-import bio_datasets  # necessary to register the custom feature types with the datasets library
-from datasets import load_dataset
+from bio_datasets import load_dataset
 
 dataset = load_dataset(
     "biodatasets/afdb_e_coli",
@@ -98,8 +97,7 @@ Each Feature type supports various configuration options (see details in \__init
 For example, using a generator-based Dataset constructor:
 
 ```python
-from datasets import Dataset, Features
-from bio_datasets import ProteinStructureFeature
+from bio_datasets import Dataset, Features, ProteinStructureFeature
 
 
 def examples_generator(pdb_file_list):
@@ -136,8 +134,7 @@ Let's convert the `bio_datasets.StructureFeature` data to the `bio_datasets.Atom
 
 
 ```python
-from datasets import Features, Value, load_dataset
-from bio_datasets import AtomArrayFeature
+from bio_datasets import Features, Value, load_dataset AtomArrayFeature
 
 dataset = load_dataset(
     "biodatasets/afdb_e_coli",
@@ -182,7 +179,7 @@ TODO: add docs.
 
 ## Roadmap
 
-* Support for other biological data types: protein-ligand complexes, MD, single cell / omics, ...
+* Support for other biological data types: MD, single cell / omics, ...
 
 
 ## Contributions

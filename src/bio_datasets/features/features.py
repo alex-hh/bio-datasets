@@ -3,7 +3,6 @@ Custom features for bio datasets.
 
 Written to ensure compatibility with datasets loading / uploading when bio datasets not available.
 """
-import copy
 import json
 from typing import ClassVar, Dict, Optional, Union
 
@@ -48,12 +47,12 @@ class CustomFeature:
             "Should be implemented by child class if `requires_encoding` is True"
         )
 
-    def decode_example(self, example):
+    def decode_example(self, example, token_per_repo_id=None):
         if self.requires_decoding:
-            return self._decode_example(example)
+            return self._decode_example(example, token_per_repo_id=token_per_repo_id)
         return example
 
-    def _decode_example(self, example):
+    def _decode_example(self, example, token_per_repo_id=None):
         raise NotImplementedError(
             "Should be implemented by child class if `requires_decoding` is True"
         )
@@ -65,7 +64,8 @@ class CustomFeature:
         )
 
 
-def encode_nested_example(schema, obj, level: int = 0):
+# because of recursion, we can't just call datasets encode_nested_example after checking for CustomFeature
+def encode_nested_example(schema, obj, level: int = 0):  # noqa: CCR001
     # Nested structures: we allow dict, list/tuples, sequences
     if isinstance(schema, dict):
         if level == 0 and obj is None:
@@ -188,14 +188,16 @@ def encode_nested_example(schema, obj, level: int = 0):
     return obj
 
 
-def decode_nested_example(
+def decode_nested_example(  # noqa: CCR001
     schema, obj, token_per_repo_id: Optional[Dict[str, Union[str, bool, None]]] = None
 ):
     """Decode a nested example.
     This is used since some features (in particular Audio and Image) have some logic during decoding.
 
-    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that is not None or empty (if it is a sequence) has to be decoded.
-    If the first element needs to be decoded, then all the elements of the list will be decoded, otherwise they'll stay the same.
+    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that
+    is not None or empty (if it is a sequence) has to be decoded.
+    If the first element needs to be decoded, then all the elements of the list will be decoded,
+    otherwise they'll stay the same.
     """
     # Nested structures: we allow dict, list/tuples, sequences
     if isinstance(schema, dict):
@@ -479,7 +481,7 @@ class Features(Features, dict):
         """
         return (
             [
-                bio_decode_nested_example(self[column_name], value)
+                decode_nested_example(self[column_name], value)
                 if value is not None
                 else None
                 for value in column
@@ -509,7 +511,7 @@ class Features(Features, dict):
         for column_name, column in batch.items():
             decoded_batch[column_name] = (
                 [
-                    bio_decode_nested_example(
+                    decode_nested_example(
                         self[column_name], value, token_per_repo_id=token_per_repo_id
                     )
                     if value is not None

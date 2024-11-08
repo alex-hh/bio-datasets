@@ -16,9 +16,11 @@
 """Constants used in AlphaFold."""
 
 import collections
-from typing import List, Mapping, Tuple
+from typing import Mapping
 
 import numpy as np
+from biotite.structure.info.ccd import get_ccd
+from biotite.structure.io.pdbx import get_component
 
 # Distance from one CA to next CA [trans configuration: omega = 180].
 ca_ca = 3.80209737096
@@ -346,76 +348,6 @@ rigid_group_atom_positions = {
     ],
 }
 
-# Reordered atoms in standard order
-# order should be consistent with atom_types
-residue_atoms = {
-    "ALA": ["N", "CA", "C", "O", "CB"],
-    "ARG": ["N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"],
-    "ASP": ["N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"],
-    "ASN": ["N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"],
-    "CYS": ["N", "CA", "C", "O", "CB", "SG"],
-    "SEC": ["N", "CA", "C", "O", "CB", "SE"],  # Selenocysteine (added)
-    "GLU": ["N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"],
-    "GLN": ["N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"],
-    "GLY": ["N", "CA", "C", "O"],
-    "HIS": ["N", "CA", "C", "O", "CB", "CG", "ND1", "CE1", "NE2", "CD2"],
-    "ILE": ["N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"],
-    "LEU": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"],
-    "LYS": ["N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ"],
-    "MET": ["N", "CA", "C", "O", "CB", "CG", "SD", "CE"],
-    "MSE": ["N", "CA", "C", "O", "CB", "CG", "SE", "CE"],  # Selenomethionine (added)
-    "PHE": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"],
-    "PRO": ["N", "CA", "C", "O", "CB", "CG", "CD"],
-    # "PYL": ["N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ", "CG2", "CD2", "CE2", "N2"],  # Pyrrolysine (added)
-    "SER": ["N", "CA", "C", "O", "CB", "OG"],
-    "THR": ["N", "CA", "C", "O", "CB", "OG1", "CG2"],
-    "TRP": [
-        "N",
-        "CA",
-        "C",
-        "O",
-        "CB",
-        "CG",
-        "CD1",
-        "NE1",
-        "CE2",
-        "CD2",
-        "CE3",
-        "CZ2",
-        "CZ3",
-        "CH2",
-    ],
-    "TYR": ["N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"],
-    "VAL": ["N", "CA", "C", "O", "CB", "CG1", "CG2"],
-    "UNK": [
-        "N",
-        "CA",
-        "C",
-        "O",
-    ],  # n.b. other atoms can be present in unk residues - we typically discard
-}
-
-restype_name_to_atom14_names = {
-    restype: [atom_name for atom_name in residue_atoms[restype]]
-    + [""] * (14 - len(residue_atoms[restype]))
-    for restype in residue_atoms
-}
-
-# Naming swaps for ambiguous atom names.
-# Due to symmetries in the amino acids the naming of atoms is ambiguous in
-# 4 of the 20 amino acids.
-# (The LDDT paper lists 7 amino acids as ambiguous, but the naming ambiguities
-# in LEU, VAL and ARG can be resolved by using the 3d constellations of
-# the 'ambiguous' atoms and their neighbours)
-# Because for LEU, VAL and ARG, no ambiguous exist when the prediction output is chi angle instead of the location of individual atoms.
-# For the rest, ASP and others, when you rotate the bond 180 degree, you get the same configuraiton due to symmetry.
-
-residue_atom_renaming_swaps = {
-    "ASP": {"OD1": "OD2"},
-    "GLU": {"OE1": "OE2"},
-    "PHE": {"CD1": "CD2", "CE1": "CE2"},
-    "TYR": {"CD1": "CD2", "CE1": "CE2"},
-}
 
 # Van der Waals radii [Angstroem] of the atoms (from Wikipedia)
 van_der_waals_radius = {
@@ -558,6 +490,56 @@ resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 resname_to_idx = {resname: i for i, resname in enumerate(resnames)}
 
 
+def get_residue_atoms_and_elements(residue_names):
+    residue_atoms = {}
+    residue_elements = {}
+    ccd_data = get_ccd()
+    for resname in residue_names:
+        comp = get_component(ccd_data, res_name=resname)
+        if resname == "UNK":
+            atoms = ["N", "CA", "C", "O"]
+        else:
+            atoms = [
+                at
+                for at in comp.atom_name
+                if at != "OXT" and not at.startswith("H") and not at.startswith("D")
+            ]
+            elements = [
+                elem
+                for at, elem in zip(comp.atom_name, comp.element)
+                if elem != "H" and elem != "D" and at != "OXT"
+            ]
+            assert len(atoms) == len(elements)
+        residue_atoms[resname] = atoms
+        residue_elements[resname] = elements
+
+    return residue_atoms, residue_elements
+
+
+residue_atoms, residue_elements = get_residue_atoms_and_elements(resnames)
+
+restype_name_to_atom14_names = {
+    restype: residue_atoms[restype] + [""] * (14 - len(residue_atoms[restype]))
+    for restype in residue_atoms
+}
+
+# Naming swaps for ambiguous atom names.
+# Due to symmetries in the amino acids the naming of atoms is ambiguous in
+# 4 of the 20 amino acids.
+# (The LDDT paper lists 7 amino acids as ambiguous, but the naming ambiguities
+# in LEU, VAL and ARG can be resolved by using the 3d constellations of
+# the 'ambiguous' atoms and their neighbours)
+# Because for LEU, VAL and ARG, no ambiguous exist when the prediction output is chi angle instead of the location of individual atoms.
+# For the rest, ASP and others, when you rotate the bond 180 degree, you get the same configuraiton due to symmetry.
+
+residue_atom_renaming_swaps = {
+    "ASP": {"OD1": "OD2"},
+    "GLU": {"OE1": "OE2"},
+    "PHE": {"CD1": "CD2", "CE1": "CE2"},
+    "TYR": {"CD1": "CD2", "CE1": "CE2"},
+}
+
+
 def sequence_to_onehot(
     sequence: str, mapping: Mapping[str, int], map_unknown_to_x: bool = False
 ) -> np.ndarray:
@@ -690,7 +672,7 @@ def aatype_to_str_sequence(aatype):
     return "".join([restypes_with_x[aatype[i]] for i in range(len(aatype))])
 
 
-### ALPHAFOLD MULTIMER STUFF ###
+# AF MULTIMER STUFF
 def _make_chi_atom_indices():
     """Returns atom indices needed to compute chi angles for all residue types.
 

@@ -2,7 +2,7 @@ import copy
 import dataclasses
 import json
 from dataclasses import asdict, dataclass
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Dict, List, Optional
 
 from datasets.info import DatasetInfo
 from datasets.splits import SplitDict
@@ -53,8 +53,8 @@ class DatasetInfo(DatasetInfo):
         return ret
 
     @classmethod
-    def from_dict(cls, dict):
-        return super().from_dict(dict)
+    def from_dict(cls, info_dict: Dict):
+        return super().from_dict(info_dict)
 
     def to_dict(self):
         new_info = self.copy()

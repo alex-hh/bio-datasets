@@ -3,10 +3,9 @@ __all__ = [
     "StructureFeature",
     "ProteinAtomArrayFeature",
     "ProteinStructureFeature",
+    "CustomFeature",
     "Features",
 ]
-
-from typing import Dict
 
 from .atom_array import (
     AtomArrayFeature,
