@@ -17,9 +17,9 @@ packages = [
 [tool.poetry.dependencies]
 pytest = ">=8.2.0"
 foldcomp = ">=0.0.7"
-biotite = ">=1.0.1"  # TODO: update when compress released
-huggingface_hub = ">=0.26.2"  # TODO: update
-datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes-new"}
+biotite = ">=1.0.1"
+huggingface_hub = ">=0.26.2"
+datasets-fast = ">=3.1.0"
 
 [tool.poetry.source]
 name = "pypi"

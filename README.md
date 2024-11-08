@@ -73,7 +73,7 @@ print(dataset.info.features)
  'structure': ProteinStructureFeature(requires_encoding=True, requires_decoding=True, decode=True, id=None, with_occupancy=False, with_b_factor=True, with_atom_id=False, with_charge=False, encode_with_foldcomp=False)}
 ```
 
-To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when bio_datasets is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format e.g. 'pdb', 'cif', etc.) fields when not.
+To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when the Bio Datasets library is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format e.g. 'pdb', 'cif', etc.) fields when loaded with `datasets.load_dataset` by a user who does not have Bio Datasets installed.
 
 We can also inspect the raw data format used for storage by discarding the feature information:
 
