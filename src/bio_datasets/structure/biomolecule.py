@@ -159,7 +159,11 @@ class Biomolecule(Generic[T]):
         for chain_id in chain_ids:
             chain_mask = atoms.chain_id == chain_id
             atom_arrs.append(atoms[chain_mask])
-        return sum(atom_arrs, bs.AtomArray(length=0))
+        new_atoms = sum(atom_arrs, bs.AtomArray(length=0))
+        for annot_name in atoms._annot:
+            if annot_name not in new_atoms._annot:
+                new_atoms.set_annotation(annot_name, atoms._annot[annot_name])
+        return new_atoms
 
     @staticmethod
     def standardise_atoms(

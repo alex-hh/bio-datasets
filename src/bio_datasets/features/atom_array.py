@@ -915,7 +915,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     @classmethod
     def from_preset(cls, preset: str, **kwargs):
         if preset == "afdb":
-            residue_dictionary = ProteinDictionary()
+            residue_dictionary = ProteinDictionary.from_preset("protein")
             return cls(
                 residue_dictionary=residue_dictionary,
                 with_b_factor=True,
@@ -929,7 +929,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 **kwargs,
             )
         elif preset == "pdb":
-            residue_dictionary = ProteinDictionary()
+            residue_dictionary = ProteinDictionary.from_preset("protein")
             return cls(
                 residue_dictionary=residue_dictionary,
                 with_b_factor=False,
@@ -939,7 +939,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
-    def encode_example(
+    def _encode_example(
         self,
         value: Union[ProteinMixin, dict, bs.AtomArray],
         is_standardised: bool = False,
@@ -957,7 +957,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             # TODO: switch to extracting backbone.
             if self.backbone_only:
                 value = value.backbone()
-            return super().encode_example(
+            return super()._encode_example(
                 value.atoms, is_standardised=value.is_standardised
             )
         if isinstance(value, bs.AtomArray):
@@ -969,8 +969,8 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                     value.atom_name, self.residue_dictionary.backbone_atoms
                 )
                 value = value[backbone_mask]
-            return super().encode_example(value)
-        return super().encode_example(value)
+            return super()._encode_example(value)
+        return super()._encode_example(value)
 
     def _decode_example(
         self, encoded: dict, token_per_repo_id=None

@@ -347,7 +347,11 @@ def load_structure(
 
     if file_type in ["cif", "bcif"]:
         return _load_cif_structure(
-            fpath_or_handler, file_type, model, extra_fields, fill_missing_residues
+            fpath_or_handler,
+            file_type=file_type,
+            model=model,
+            extra_fields=extra_fields,
+            fill_missing_residues=fill_missing_residues,
         )
 
     elif file_type == "pdb":
@@ -355,14 +359,12 @@ def load_structure(
             fpath_or_handler,
             model=model,
             extra_fields=extra_fields,
-            fill_missing_residues=fill_missing_residues,
         )
     elif file_type == "fcz":
         return _load_foldcomp_structure(
             fpath_or_handler,
             model=model,
             extra_fields=extra_fields,
-            fill_missing_residues=fill_missing_residues,
         )
     else:
         raise ValueError(f"Unsupported file format: {file_type}")
