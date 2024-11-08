@@ -44,7 +44,7 @@ UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
 
 
-def override_gsutil():
+def import_pinder(override_gsutil: bool = False):
     import pinder.core.utils.cloud
 
     def process_many(
@@ -74,10 +74,10 @@ def override_gsutil():
         """
         if not len(path_pairs):
             return
-        if method not in pinder_cloud_utils.BLOB_ACTIONS:
-            raise Exception(f"{method=} not in {pinder_cloud_utils.BLOB_ACTIONS=}")
+        if method not in pinder.core.utils.cloud.BLOB_ACTIONS:
+            raise Exception(f"{method=} not in {pinder.core.utils.cloud.BLOB_ACTIONS=}")
         for path, blob in path_pairs:
-            pinder_cloud_utils.retry_blob_method(
+            pinder.core.utils.cloud.retry_blob_method(
                 blob,
                 method,
                 path,
@@ -85,7 +85,7 @@ def override_gsutil():
                 timeout=timeout,
             )
 
-    class Gsutil(pinder_cloud_utils.Gsutil):
+    class Gsutil(pinder.core.utils.cloud.Gsutil):
         @staticmethod
         def process_many(
             *args: List[Tuple[str, Blob]], **kwargs: int | tuple[int, int]
@@ -95,21 +95,21 @@ def override_gsutil():
 
     pinder.core.utils.cloud.Gsutil = Gsutil
 
+    global PinderSystem, get_index, get_metadata, IndexEntry, Structure
+    global _align_and_map_sequences, _get_seq_aligned_structures, _get_structure_and_res_info
+    global apply_mask, get_seq_alignments, mask_from_res_list
 
-override_gsutil()
-
-
-from pinder.core import PinderSystem, get_index, get_metadata
-from pinder.core.index.utils import IndexEntry
-from pinder.core.loader.structure import Structure
-from pinder.core.structure.atoms import (
-    _align_and_map_sequences,
-    _get_seq_aligned_structures,
-    _get_structure_and_res_info,
-    apply_mask,
-    get_seq_alignments,
-    mask_from_res_list,
-)
+    from pinder.core import PinderSystem, get_index, get_metadata
+    from pinder.core.index.utils import IndexEntry
+    from pinder.core.loader.structure import Structure
+    from pinder.core.structure.atoms import (
+        _align_and_map_sequences,
+        _get_seq_aligned_structures,
+        _get_structure_and_res_info,
+        apply_mask,
+        get_seq_alignments,
+        mask_from_res_list,
+    )
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -617,9 +617,10 @@ if __name__ == "__main__":
     parser.add_argument("--safe_download", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
-    if args.safe_download or (args.num_proc is not None and args.num_proc > 1):
-        pinder_cloud_utils.process_many = process_many
-        pinder_cloud_utils.Gsutil.process_many = process_many
+    import_pinder(
+        override_gsutil=args.safe_download
+        or (args.num_proc is not None and args.num_proc > 1)
+    )
 
     index = get_index()
     metadata = get_metadata()

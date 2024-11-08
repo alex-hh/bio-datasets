@@ -140,6 +140,7 @@ class Biomolecule(Generic[T]):
         if not keep_oxt:
             # oxt complicates things for residue dictionary.
             atoms = atoms[atoms.atom_name != "OXT"]
+        # TODO: we actually want to use residue_dictionary.residue_atoms
         if residue_dictionary is not None:
             expected_residue_mask = np.isin(
                 atoms.res_name, residue_dictionary.residue_names
@@ -214,6 +215,7 @@ class Biomolecule(Generic[T]):
             chain_id=atoms.chain_id[residue_starts],
             extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
         )
+
         # first we get an array of atom indices for each residue (i.e. a mapping from atom type index to expected index
         # then we index into this array to get the expected relative index for each atom
         expected_relative_atom_indices = (

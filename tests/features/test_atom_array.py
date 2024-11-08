@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from biotite.structure.sequence import to_sequence
 
-from bio_datasets.features.atom_array import ProteinAtomArrayFeature
+from bio_datasets.features.atom_array import AtomArrayFeature, ProteinAtomArrayFeature
 from bio_datasets.structure.protein import ProteinDictionary
 
 
@@ -38,7 +38,7 @@ def test_encode_decode_atom_array_without_residue_dictionary(afdb_atom_array):
     We encode residue-level annotations separately to the atom coords so
     important to check that they get decoded back to the atom array correctly.
     """
-    feat = ProteinAtomArrayFeature(residue_dictionary=None, load_as="biotite")
+    feat = AtomArrayFeature(residue_dictionary=None, load_as="biotite")
     encoded = feat.encode_example(afdb_atom_array)
     decoded = feat.decode_example(encoded)
     assert np.isclose(decoded.coord, afdb_atom_array.coord).all()

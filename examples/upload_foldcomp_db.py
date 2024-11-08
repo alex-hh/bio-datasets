@@ -28,7 +28,8 @@ def examples_generator(
                 )
                 example = {
                     "name": name,
-                    "structure": ProteinChain(atoms),
+                    "structure": atoms,
+                    # "structure": ProteinChain(atoms), TODO: profile why this is slower
                 }
                 yield example
             else:
