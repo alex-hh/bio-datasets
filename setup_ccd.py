@@ -226,7 +226,7 @@ if __name__ == "__main__":
     response = requests.get(url)
     response.raise_for_status()
 
-    # Save to same directory as CCD
+    # Save to same directory as CCD.
     freq_path = OUTPUT_CCD.parent / "cc-counts.tdd"
     with open(freq_path, "wb") as f:
         f.write(response.content)

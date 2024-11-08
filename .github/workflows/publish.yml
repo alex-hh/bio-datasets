@@ -51,8 +51,8 @@ jobs:
         uses: actions/cache@v4
         id: cache-ccd
         with:
-          path: ./src/bio_datasets/structure/library/components.bcif
-          key: cache-${{ hashFiles('setup_ccd.py') }}-${{ hashFiles('components.cif.gz') }}-${{ hashFiles('cc-counts.tdd') }}
+          path: ./src/bio_datasets/structure/library/
+          key: cache-${{ hashFiles('setup_ccd.py') }}-${{ hashFiles('./src/bio_datasets/structure/library/components.cif.gz') }}-${{ hashFiles('./src/bio_datasets/structure/library/cc-counts.tdd') }}
       - name: Build internal CCD
         if: steps.cache-ccd.outputs.cache-hit != 'true'
         run: |
@@ -83,28 +83,6 @@ jobs:
         with:
           name: ccd_res_dict
           path: ./src/bio_datasets/structure/library/ccd_residue_dictionary.json
-      # in case it wasn't re-built: download everything
-      - name: Add internal CCD to bio_datasets
-        if: steps.cache-ccd.outputs.cache-hit == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: ccd
-          path: src/bio_datasets/structure/library/
-
-      - name: Add internal CCD frequency file to bio_datasets
-        if: steps.cache-ccd.outputs.cache-hit == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: ccd_freq
-          path: src/bio_datasets/structure/library/
-
-      - name: Add internal CCD residue dictionary to bio_datasets
-        if: steps.cache-ccd.outputs.cache-hit == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: ccd_res_dict
-          path: src/bio_datasets/structure/library/
-
       - name: Test
         run: |
           pytest
