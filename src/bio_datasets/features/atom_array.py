@@ -400,6 +400,7 @@ class AtomArrayFeature(CustomFeature):
         self.deserialize()
         self._features = self._make_features_dict()
         if not self.with_element and not self.all_atoms_present:
+            # TODO: support element inference
             raise ValueError("with_element must be True if all_atoms_present is False")
 
     def __call__(self):
