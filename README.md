@@ -5,7 +5,7 @@ Bringing bio (molecules and more) to the HuggingFace Datasets library.
 This (unofficial!) extension to Datasets is designed to make the following things as easy as possible:
 
 1. efficient storage of biological data for ML
-2. low-overhead loading of and standardisation of data into ml-ready python objects
+2. low-overhead loading and standardisation of data into ML-ready python objects
 3. sharing of datasets large and small
 
 We aim to do these three things and *no more*, leaving you to get on with the science!
@@ -24,6 +24,7 @@ The main formats we support for storing and loading biomolecular structure data 
 We also provide protein-specific versions of these features for protein structure data, supporting protein-specific storage formats (like foldcomp) and loaded python objects:
 
 | Feature name | Storage format | Loaded as |
+| ------------ | -------------- | --------- |
 | ProteinAtomArrayFeature | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (default)|
 | ProteinStructureFeature | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.structure.AtomArray` / `bio_dataasets.ProteinCahin` / `bio_datasets.ProteinComplex` (default) |
 
@@ -31,7 +32,7 @@ We also provide protein-specific versions of these features for protein structur
 ## Installation with pip
 
 ```bash
-pip install biodatasets
+pip install datasets-bio
 ```
 
 ## Usage
@@ -59,7 +60,7 @@ print(type(ex["structure"]))
 <class 'bio_datasets.structure.protein.protein.ProteinChain'>
 ```
 
-That's it: when you access data from a dataset with preset Bio Datasets feature types, the datapoints that it returns will be Python dictionaries containing your Protein data formatted as a `bio_datasets.protein.ProteinChain` object (basically a biotite AtomArray with some added convenience methods for Protein ML.)
+That's it: when you access data from a dataset with preset Bio Datasets feature types, the datapoints that it returns will be Python dictionaries containing your Protein data formatted as a `bio_datasets.ProteinChain` object (basically a biotite AtomArray with some added convenience methods for Protein ML.)
 
 The trick is that the data was stored together with the required Feature type information, which we can inspect directly:
 
@@ -72,7 +73,7 @@ print(dataset.info.features)
  'structure': ProteinStructureFeature(requires_encoding=True, requires_decoding=True, decode=True, id=None, with_occupancy=False, with_b_factor=True, with_atom_id=False, with_charge=False, encode_with_foldcomp=False)}
 ```
 
-To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when bio_datasets is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format) fields when not.
+To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when bio_datasets is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format e.g. 'pdb', 'cif', etc.) fields when not.
 
 We can also inspect the raw data format used for storage by discarding the feature information:
 
@@ -92,7 +93,7 @@ To streamline the processes of building your own datasets from local files, we p
 
 If your local data doesn't fit the format assumed by ProteinStructureFolder, but you still want a way to create a Dataset instance (for example to convert your local data into a more efficient storage format for sharing, or to exploit Dataset's fast memory-mapped retrieval), you simply need to configure a Dataset constructor with information on your Feature types:
 
-This feature configuration is performed by creating a `datasets.Features` object mapping column names to feature types.
+This feature configuration is performed by creating a `bio_datasets.Features` object mapping column names to feature types.
 
 Each Feature type supports various configuration options (see details in \__init__ methods) controlling the formats in which data is stored and loaded.
 
