@@ -37,14 +37,15 @@ from bio_datasets import (
     Sequence,
     Value,
 )
-from bio_datasets.structure.protein import ProteinDictionary, ProteinMixin
+from bio_datasets.structure.biomolecule import Biomolecule
+from bio_datasets.structure.protein import ProteinDictionary
 from bio_datasets.structure.protein import constants as protein_constants
 
 UPLOAD = "upload_from_filename"
 DOWNLOAD = "download_to_filename"
 
 
-def override_gsutil():
+def import_pinder(override_gsutil: bool = False):
     import pinder.core.utils.cloud
 
     def process_many(
@@ -74,10 +75,10 @@ def override_gsutil():
         """
         if not len(path_pairs):
             return
-        if method not in pinder_cloud_utils.BLOB_ACTIONS:
-            raise Exception(f"{method=} not in {pinder_cloud_utils.BLOB_ACTIONS=}")
+        if method not in pinder.core.utils.cloud.BLOB_ACTIONS:
+            raise Exception(f"{method=} not in {pinder.core.utils.cloud.BLOB_ACTIONS=}")
         for path, blob in path_pairs:
-            pinder_cloud_utils.retry_blob_method(
+            pinder.core.utils.cloud.retry_blob_method(
                 blob,
                 method,
                 path,
@@ -85,7 +86,7 @@ def override_gsutil():
                 timeout=timeout,
             )
 
-    class Gsutil(pinder_cloud_utils.Gsutil):
+    class Gsutil(pinder.core.utils.cloud.Gsutil):
         @staticmethod
         def process_many(
             *args: List[Tuple[str, Blob]], **kwargs: int | tuple[int, int]
@@ -95,21 +96,24 @@ def override_gsutil():
 
     pinder.core.utils.cloud.Gsutil = Gsutil
 
+    global PinderSystem, get_index, get_metadata, IndexEntry, Structure
+    global _align_and_map_sequences, _get_seq_aligned_structures, _get_structure_and_res_info
+    global apply_mask, get_seq_alignments, mask_from_res_list
 
-override_gsutil()
+    from pinder.core import PinderSystem, get_index, get_metadata
+    from pinder.core.index.utils import IndexEntry
+    from pinder.core.loader.structure import Structure
+    from pinder.core.structure.atoms import (
+        _align_and_map_sequences,
+        _get_seq_aligned_structures,
+        _get_structure_and_res_info,
+        apply_mask,
+        get_seq_alignments,
+        mask_from_res_list,
+    )
 
 
-from pinder.core import PinderSystem, get_index, get_metadata
-from pinder.core.index.utils import IndexEntry
-from pinder.core.loader.structure import Structure
-from pinder.core.structure.atoms import (
-    _align_and_map_sequences,
-    _get_seq_aligned_structures,
-    _get_structure_and_res_info,
-    apply_mask,
-    get_seq_alignments,
-    mask_from_res_list,
-)
+import_pinder(override_gsutil=True)
 
 
 def mask_structure(structure: Structure, mask: np.ndarray) -> Structure:
@@ -294,10 +298,12 @@ class PinderDataset:
         assert len(set(ref_chains)) == 1
 
         ref_at = ref_struct.atom_array.copy()
-        residue_dict = ProteinDictionary(drop_oxt=True)
-        ref_at = ProteinMixin.standardise_atoms(ref_at, residue_dict)
+        residue_dict = ProteinDictionary.from_preset("protein", keep_oxt=False)
+        ref_at = Biomolecule.filter_atoms(ref_at, residue_dictionary=residue_dict)
+        ref_at = Biomolecule.standardise_atoms(ref_at, residue_dict)
         target_at = target_struct.atom_array.copy()
-        target_at = ProteinMixin.standardise_atoms(target_at, residue_dict)
+        target_at = Biomolecule.filter_atoms(target_at, residue_dictionary=residue_dict)
+        target_at = Biomolecule.standardise_atoms(target_at, residue_dict)
 
         if mode == "ref":
             # We drop any target residues that aren't present in the reference.
@@ -368,9 +374,11 @@ class PinderDataset:
             )
             return None
 
-        protein_dict = ProteinDictionary(drop_oxt=True)
-        native_R_at = ProteinMixin.standardise_atoms(native_R.atom_array, protein_dict)
-        native_L_at = ProteinMixin.standardise_atoms(native_L.atom_array, protein_dict)
+        protein_dict = ProteinDictionary.from_preset("protein", keep_oxt=False)
+        native_R_at = Biomolecule.filter_atoms(native_R.atom_array, protein_dict)
+        native_L_at = Biomolecule.filter_atoms(native_L.atom_array, protein_dict)
+        native_R_at = Biomolecule.standardise_atoms(native_R_at, protein_dict)
+        native_L_at = Biomolecule.standardise_atoms(native_L_at, protein_dict)
         native_R.atom_array = native_R_at
         native_L.atom_array = native_L_at
 
@@ -426,10 +434,10 @@ class PinderDataset:
 
         holo_receptor_at = holo_receptor.atom_array.copy()
         holo_ligand_at = holo_ligand.atom_array.copy()
-        holo_receptor_at = ProteinMixin.standardise_atoms(
-            holo_receptor_at, protein_dict
-        )
-        holo_ligand_at = ProteinMixin.standardise_atoms(holo_ligand_at, protein_dict)
+        holo_receptor_at = Biomolecule.filter_atoms(holo_receptor_at, protein_dict)
+        holo_ligand_at = Biomolecule.filter_atoms(holo_ligand_at, protein_dict)
+        holo_receptor_at = Biomolecule.standardise_atoms(holo_receptor_at, protein_dict)
+        holo_ligand_at = Biomolecule.standardise_atoms(holo_ligand_at, protein_dict)
         holo_receptor = Structure(
             filepath=holo_receptor.filepath,
             uniprot_map=holo_receptor.uniprot_map,
@@ -617,9 +625,10 @@ if __name__ == "__main__":
     parser.add_argument("--safe_download", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
     args = parser.parse_args()
-    if args.safe_download or (args.num_proc is not None and args.num_proc > 1):
-        pinder_cloud_utils.process_many = process_many
-        pinder_cloud_utils.Gsutil.process_many = process_many
+    import_pinder(
+        override_gsutil=args.safe_download
+        or (args.num_proc is not None and args.num_proc > 1)
+    )
 
     index = get_index()
     metadata = get_metadata()
@@ -647,7 +656,7 @@ if __name__ == "__main__":
             index = index.groupby("cluster_id").head(1)
 
     cluster_ids = list(index.cluster_id.unique())
-    protein_dict = ProteinDictionary()
+    protein_dict = ProteinDictionary.from_preset("protein")
     print(f"Pinder dataset: {len(cluster_ids)} clusters; {len(index)} systems")
 
     # TODO: decide on appropriate metadata (probably most of stuff from metadata...)

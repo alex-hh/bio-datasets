@@ -2,7 +2,9 @@
 
 Features are decoded into biotite atom arrays.
 """
+import functools
 import gzip
+import logging
 import os
 import uuid
 from collections import OrderedDict
@@ -42,6 +44,8 @@ if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
 
 from .features import CustomFeature, register_bio_feature
+
+logger = logging.getLogger(__name__)
 
 extra_annots = [
     "b_factor",
@@ -208,9 +212,10 @@ def _load_from_bytes(
         fhandler = _get_file_handler(bytes_, file_type)
         return load_structure(fhandler, file_type=file_type, extra_fields=extra_fields)
 
+    file_type = infer_bytes_format(bytes_)
     pdb = _decode_bytes(bytes_, file_type)
     contents = StringIO(pdb)
-    return load_structure(contents, format="pdb", extra_fields=extra_fields)
+    return load_structure(contents, file_type="pdb", extra_fields=extra_fields)
 
 
 def _get_file_handler(bytes_: bytes, file_type: Optional[str]):
@@ -406,8 +411,8 @@ class AtomArrayFeature(CustomFeature):
 
     def _encode_example(
         self,
-        value: Union[bs.AtomArray, Dict, Biomolecule],
-        is_standardised: bool = False,
+        value: Union[bs.AtomArray, Dict, Biomolecule, os.PathLike, bytes],
+        is_standardised: bool = False,  # if encoding a standardised Biomolecule, avoid re-standardising
     ) -> dict:
         if isinstance(value, Biomolecule):
             return self._encode_example(
@@ -650,6 +655,12 @@ class StructureFeature(CustomFeature):
     )
     _type: str = field(default="StructureFeature", init=False, repr=False)
 
+    def __post_init__(self):
+        if self.load_as in ["chain", "complex"]:
+            assert "residue_dictionary" in (
+                self.constructor_kwargs or {}
+            ), "residue_dictionary must be provided if load_as is chain or complex"
+
     def __call__(self):
         return self.pa_type
 
@@ -753,18 +764,17 @@ class StructureFeature(CustomFeature):
             `biotite.AtomArray`
         """
         atoms = self._decode_atoms(value, token_per_repo_id=token_per_repo_id)
+        constructor_kwargs = self.constructor_kwargs or {}
         if self.load_as == "biotite":
             return atoms
-        elif self.load_as == "biomolecule":
-            residue_dict = self.residue_dictionary or ResidueDictionary.from_ccd_dict()
-            return Biomolecule(atoms, residue_dict, **self.constructor_kwargs)
+        if self.load_as == "biomolecule":
+            return Biomolecule(atoms, **constructor_kwargs)
         elif self.load_as == "chain":
-            return BiomoleculeChain(atoms, residue_dict, **self.constructor_kwargs)
+            return BiomoleculeChain(atoms, **constructor_kwargs)
         elif self.load_as == "complex":
             return BiomoleculeComplex.from_atoms(
                 atoms,
-                residue_dictionary=self.residue_dictionary,
-                **self.constructor_kwargs,
+                **constructor_kwargs,
             )
         else:
             raise ValueError(f"Unsupported load_as: {self.load_as}")
@@ -847,6 +857,15 @@ class ProteinStructureFeature(StructureFeature):
     load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
     _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
 
+    def __post_init__(self):
+        # residue_dictionary will be set to default if not provided in constructor_kwargs
+        if "residue_dictionary" not in (
+            self.constructor_kwargs or {}
+        ) and self.load_as in ["chain", "complex"]:
+            logger.info(
+                "No residue_dictionary provided for ProteinStructureFeature, default ProteinDictionary will be used to decode."
+            )
+
     def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
             value = value[filter_amino_acids(value)]
@@ -856,7 +875,7 @@ class ProteinStructureFeature(StructureFeature):
     def _decode_example(
         self, encoded: dict, token_per_repo_id=None
     ) -> Union["ProteinChain", "ProteinComplex", None]:
-        atoms = self._decode_example(encoded, token_per_repo_id=token_per_repo_id)
+        atoms = self._decode_atoms(encoded, token_per_repo_id=token_per_repo_id)
         # TODO: filter amino acids in encode_example also where possible
         constructor_kwargs = self.constructor_kwargs or {}
         if self.load_as == "biotite":
@@ -866,13 +885,9 @@ class ProteinStructureFeature(StructureFeature):
                 "Returning biomolecule for protein-specific feature not supported."
             )
         elif self.load_as == "chain":
-            return ProteinChain(
-                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
-            )
+            return ProteinChain(atoms, **constructor_kwargs)
         elif self.load_as == "complex":
-            return ProteinComplex.from_atoms(
-                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
-            )
+            return ProteinComplex.from_atoms(atoms, **constructor_kwargs)
         else:
             raise ValueError(f"Unsupported load_as: {self.load_as}")
 
@@ -898,11 +913,20 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
 
     all_atoms_present: bool = False
     backbone_only: bool = False
+    residue_dictionary: ProteinDictionary = field(
+        default_factory=functools.partial(ProteinDictionary.from_preset, "protein")
+    )
     load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
     internal_coords_type: str = None  # foldcomp, idealised, or pnerf
     _type: str = field(
         default="ProteinAtomArrayFeature", init=False, repr=False
     )  # registered feature name
+
+    def __post_init__(self):
+        super().__post_init__()
+        assert (
+            self.residue_dictionary is not None
+        ), "residue_dictionary must be provided"
 
     def deserialize(self):
         if isinstance(self.residue_dictionary, dict):
@@ -915,7 +939,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     @classmethod
     def from_preset(cls, preset: str, **kwargs):
         if preset == "afdb":
-            residue_dictionary = ProteinDictionary()
+            residue_dictionary = ProteinDictionary.from_preset("protein")
             return cls(
                 residue_dictionary=residue_dictionary,
                 with_b_factor=True,
@@ -929,7 +953,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 **kwargs,
             )
         elif preset == "pdb":
-            residue_dictionary = ProteinDictionary()
+            residue_dictionary = ProteinDictionary.from_preset("protein")
             return cls(
                 residue_dictionary=residue_dictionary,
                 with_b_factor=False,
@@ -939,12 +963,10 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
-    def encode_example(
+    def _encode_example(
         self,
         value: Union[ProteinMixin, dict, bs.AtomArray],
-        is_standardised: bool = False,
     ) -> dict:
-        # TODO: share this code
         if isinstance(value, dict) and "sequence" in value:
             value = protein_atom_array_from_dict(
                 value,
@@ -957,20 +979,21 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             # TODO: switch to extracting backbone.
             if self.backbone_only:
                 value = value.backbone()
-            return super().encode_example(
+            return super()._encode_example(
                 value.atoms, is_standardised=value.is_standardised
             )
         if isinstance(value, bs.AtomArray):
-            if not is_standardised:
-                value = value[~np.isin(value.element, ["H", "D"])]
-                value = value[filter_amino_acids(value)]
+            value = value[~np.isin(value.element, ["H", "D"])]
+            value = value[filter_amino_acids(value)]
+            if not self.residue_dictionary.keep_oxt:
+                value = value[value.atom_name != "OXT"]
             if self.backbone_only:
                 backbone_mask = np.isin(
                     value.atom_name, self.residue_dictionary.backbone_atoms
                 )
                 value = value[backbone_mask]
-            return super().encode_example(value)
-        return super().encode_example(value)
+            return super()._encode_example(value)
+        return super()._encode_example(value)
 
     def _decode_example(
         self, encoded: dict, token_per_repo_id=None

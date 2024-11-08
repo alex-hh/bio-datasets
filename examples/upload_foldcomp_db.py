@@ -23,10 +23,13 @@ def examples_generator(
         for (name, pdb_str) in itertools.islice(db, max_examples):
             # if we opened with decompress False, we wouldn't get name
             if as_array:
-                atoms = load_structure(io.StringIO(pdb_str), extra_fields=["b_factor"])
+                atoms = load_structure(
+                    io.StringIO(pdb_str), file_type="pdb", extra_fields=["b_factor"]
+                )
                 example = {
                     "name": name,
-                    "structure": ProteinChain(atoms),
+                    "structure": atoms,
+                    # "structure": ProteinChain(atoms), TODO: profile why this is slower
                 }
                 yield example
             else:
@@ -52,7 +55,7 @@ def main(
     features = Features(
         name=Value("string"),
         structure=ProteinAtomArrayFeature.from_preset(
-            "afdb", drop_sidechains=backbone_only
+            "afdb", backbone_only=backbone_only
         )
         if as_array
         else ProteinStructureFeature(with_b_factor=True),

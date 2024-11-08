@@ -83,7 +83,8 @@ def main(
         # from_generator calls GeneratorBasedBuilder.download_and_prepare and as_dataset
         features = Features(
             backbone=ProteinAtomArrayFeature(
-                residue_dictionary=ProteinDictionary(), backbone_only=True
+                residue_dictionary=ProteinDictionary.from_preset("protein"),
+                backbone_only=True,
             ),
             num_chains=Value("int32"),
             name=Value("string"),

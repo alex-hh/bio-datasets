@@ -42,8 +42,7 @@ class Biomolecule(Generic[T]):
         residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
-        keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
+        keep_hydrogens: bool = False,  # TODO: handle with residue dictionary
         raise_error_on_unexpected: bool = False,
         replace_unexpected_with_unknown: bool = False,
     ):
@@ -52,7 +51,6 @@ class Biomolecule(Generic[T]):
         self.raise_error_on_unexpected = raise_error_on_unexpected
         self.replace_unexpected_with_unknown = replace_unexpected_with_unknown
         self.keep_hydrogens = keep_hydrogens
-        self.keep_oxt = keep_oxt
         atoms = self.convert_residues(
             atoms,
             self.residue_dictionary,
@@ -63,7 +61,6 @@ class Biomolecule(Generic[T]):
             self.residue_dictionary,
             raise_error_on_unexpected=self.raise_error_on_unexpected,
             keep_hydrogens=self.keep_hydrogens,
-            keep_oxt=self.keep_oxt,
         )  # e.g. check for standard residues.
         self.atoms = self.standardise_atoms(
             atoms,
@@ -128,7 +125,6 @@ class Biomolecule(Generic[T]):
         residue_dictionary: Optional[ResidueDictionary] = None,
         raise_error_on_unexpected: bool = False,
         keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
     ):
         # drop water
         atoms = atoms[atoms.res_name != "HOH"]
@@ -137,9 +133,12 @@ class Biomolecule(Generic[T]):
                 "element" in atoms._annot
             ), "Elements must be present to exclude hydrogens"
             atoms = atoms[~np.isin(atoms.element, ["H", "D"])]
-        if not keep_oxt:
+        if residue_dictionary is None or not getattr(
+            residue_dictionary, "keep_oxt", False
+        ):
             # oxt complicates things for residue dictionary.
             atoms = atoms[atoms.atom_name != "OXT"]
+        # TODO: we actually want to use residue_dictionary.residue_atoms
         if residue_dictionary is not None:
             expected_residue_mask = np.isin(
                 atoms.res_name, residue_dictionary.residue_names
@@ -159,7 +158,11 @@ class Biomolecule(Generic[T]):
         for chain_id in chain_ids:
             chain_mask = atoms.chain_id == chain_id
             atom_arrs.append(atoms[chain_mask])
-        return sum(atom_arrs, bs.AtomArray(length=0))
+        new_atoms = sum(atom_arrs, bs.AtomArray(length=0))
+        for annot_name in atoms._annot:
+            if annot_name not in new_atoms._annot:
+                new_atoms.set_annotation(annot_name, atoms._annot[annot_name])
+        return new_atoms
 
     @staticmethod
     def standardise_atoms(
@@ -210,6 +213,7 @@ class Biomolecule(Generic[T]):
             chain_id=atoms.chain_id[residue_starts],
             extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
         )
+
         # first we get an array of atom indices for each residue (i.e. a mapping from atom type index to expected index
         # then we index into this array to get the expected relative index for each atom
         expected_relative_atom_indices = (
@@ -498,7 +502,6 @@ class BiomoleculeChain(Biomolecule):
         verbose: bool = False,
         backbone_only: bool = False,
         keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
         raise_error_on_unexpected: bool = False,
         replace_unexpected_with_unknown: bool = False,
     ):
@@ -511,7 +514,6 @@ class BiomoleculeChain(Biomolecule):
             verbose=verbose,
             backbone_only=backbone_only,
             keep_hydrogens=keep_hydrogens,
-            keep_oxt=keep_oxt,
             raise_error_on_unexpected=raise_error_on_unexpected,
             replace_unexpected_with_unknown=replace_unexpected_with_unknown,
         )

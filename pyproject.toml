@@ -13,6 +13,8 @@ requires-python = ">=3.7"
 packages = [
     { include = "bio_datasets", from = "src" }
 ]
+long_description = "Bringing bio (molecules and more) to the HuggingFace Datasets library. This (unofficial!) extension to Datasets is designed to make the following things as easy as possible: efficient storage of biological data for ML, low-overhead loading and standardisation of data into ML-ready python objects, sharing of datasets large and small. We aim to do these three things and *no more*, leaving you to get on with the science!"
+long_description_content_type = "text/markdown"
 
 [tool.poetry.dependencies]
 pytest = ">=8.2.0"

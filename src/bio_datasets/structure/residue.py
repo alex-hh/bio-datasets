@@ -372,7 +372,7 @@ class ResidueDictionary:
         )
 
     def __str__(self):
-        return f"ResidueDictionary ({len(self.residue_names)}) residue types"
+        return f"{self.__class__.__name__} ({len(self.residue_names)}) residue types"
 
     @property
     def residue_sizes(self):
