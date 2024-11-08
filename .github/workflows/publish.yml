@@ -128,7 +128,8 @@ jobs:
   # uploaded files are listed under the "Assets" section of the release page on GitHub.
   # This section is separate from the source code archives (like .zip or .tar.gz files) that GitHub automatically generates for the release.
   upload-package:
-    name: Upload package to GitHub Releases & PyPI
+    name: Upload package to GitHub Releases & PyPI]
+    if: github.event_name == 'release' && github.event.action == 'published'
     permissions:
       contents: write
       id-token: write  # IMPORTANT: mandatory for trusted publishing
@@ -152,12 +153,10 @@ jobs:
       run: ls dist
     - name: Upload to GitHub Releases
       uses: softprops/action-gh-release@v2.0.5
-      if: github.event_name == 'release' && github.event.action == 'published'
       with:
         files: dist//*
     - name: Upload to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
-      if: github.event_name == 'release' && github.event.action == 'published'
 
   # publish-to-testpypi:
   #   name: Publish Python 🐍 distribution 📦 to TestPyPI

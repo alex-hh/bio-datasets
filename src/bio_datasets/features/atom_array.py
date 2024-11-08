@@ -53,7 +53,7 @@ extra_annots = [
 ]
 
 
-def element_from_atom_name(atom_name):
+def element_from_atom_name(atom_name: np.ndarray, molecule_type: np.ndarray):
     # TODO: write a vectorised version
     # I think there is actually ambiguity here - CA can be alpha carbon or Calcium...
     raise NotImplementedError()

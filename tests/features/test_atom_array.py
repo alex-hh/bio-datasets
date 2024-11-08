@@ -18,7 +18,7 @@ def test_encode_decode_atom_array(afdb_atom_array):
         bs_sequences[0]
     )
     decoded = feat.decode_example(encoded).atoms
-    # TODO: fix these tests - issue is that atoms get reordered
+    # TODO: fix these tests - issue is that atoms get reordered - maybe store perm
     # assert np.isclose(decoded.coord, afdb_atom_array.coord).all()
     # assert np.all(decoded.atom_name == afdb_atom_array.atom_name)
     assert np.all(decoded.res_name == afdb_atom_array.res_name)
