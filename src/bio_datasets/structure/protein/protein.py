@@ -261,13 +261,14 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
             residue_dictionary = ProteinDictionary.from_preset(
                 "protein", keep_oxt=keep_oxt
             )
+        else:
+            assert keep_oxt == getattr(residue_dictionary, "keep_oxt", False)
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,
             verbose=verbose,
             backbone_only=backbone_only,
             keep_hydrogens=keep_hydrogens,
-            keep_oxt=keep_oxt,
             replace_unexpected_with_unknown=replace_unexpected_with_unknown,
             raise_error_on_unexpected=raise_error_on_unexpected,
         )
