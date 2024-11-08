@@ -48,12 +48,12 @@ class CustomFeature:
             "Should be implemented by child class if `requires_encoding` is True"
         )
 
-    def decode_example(self, example):
+    def decode_example(self, example, token_per_repo_id=None):
         if self.requires_decoding:
-            return self._decode_example(example)
+            return self._decode_example(example, token_per_repo_id=token_per_repo_id)
         return example
 
-    def _decode_example(self, example):
+    def _decode_example(self, example, token_per_repo_id=None):
         raise NotImplementedError(
             "Should be implemented by child class if `requires_decoding` is True"
         )
@@ -194,8 +194,10 @@ def decode_nested_example(
     """Decode a nested example.
     This is used since some features (in particular Audio and Image) have some logic during decoding.
 
-    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that is not None or empty (if it is a sequence) has to be decoded.
-    If the first element needs to be decoded, then all the elements of the list will be decoded, otherwise they'll stay the same.
+    To avoid iterating over possibly long lists, it first checks (recursively) if the first element that
+    is not None or empty (if it is a sequence) has to be decoded.
+    If the first element needs to be decoded, then all the elements of the list will be decoded,
+    otherwise they'll stay the same.
     """
     # Nested structures: we allow dict, list/tuples, sequences
     if isinstance(schema, dict):

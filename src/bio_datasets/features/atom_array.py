@@ -236,9 +236,6 @@ def load_structure_from_file_dict(
     return atom_array
 
 
-# n.b. metadata like chain_id, pdb_id, etc. should be stored separately
-
-
 @dataclass
 class AtomArrayFeature(CustomFeature):
     """
@@ -274,49 +271,7 @@ class AtomArrayFeature(CustomFeature):
         - b_factor
         - atom_id
         - charge
-
-    From biotite docs:
-    Atom attributes:
-
-    The following annotation categories are mandatory:
-
-    =========  ===========  =================  =======================================
-    Category   Type         Examples           Description
-    =========  ===========  =================  =======================================
-    chain_id   string (U4)  'A','S','AB', ...  Polypeptide chain
-    res_id     int          1,2,3, ...         Sequence position of residue
-    ins_code   string (U1)  '', 'A','B',..     PDB insertion code (iCode)
-    res_name   string (U5)  'GLY','ALA', ...   Residue name
-    hetero     bool         True, False        False for ``ATOM``, true for ``HETATM``
-    atom_name  string (U6)  'CA','N', ...      Atom name
-    element    string (U2)  'C','O','SE', ...  Chemical Element
-    =========  ===========  =================  =======================================
-
-    For all :class:`Atom`, :class:`AtomArray` and :class:`AtomArrayStack`
-    objects these annotations are initially set with default values.
-    Additionally to these annotations, an arbitrary amount of annotation
-    categories can be added via :func:`add_annotation()` or
-    :func:`set_annotation()`.
-    The annotation arrays can be accessed either via the method
-    :func:`get_annotation()` or directly (e.g. ``array.res_id``).
-
-    The following annotation categories are optionally used by some
-    functions:
-
-    =========  ===========  =================   ============================
-    Category   Type         Examples            Description
-    =========  ===========  =================   ============================
-    atom_id    int          1,2,3, ...          Atom serial number
-    b_factor   float        0.9, 12.3, ...      Temperature factor
-    occupancy  float        .1, .3, .9, ...     Occupancy
-    charge     int          -2,-1,0,1,2, ...    Electric charge of the atom
-    =========  ===========  =================   ============================
-
-    Bond information can be associated to an :class:`AtomArray` or
-    :class:`AtomArrayStack` by setting the ``bonds`` attribute with a
-    :class:`BondList`.
-    A :class:`BondList` specifies the indices of atoms that form chemical
-    bonds.
+        - element
     """
 
     residue_dictionary: Optional[Union[ResidueDictionary, Dict]] = None
@@ -456,13 +411,13 @@ class AtomArrayFeature(CustomFeature):
             arrays, names=list(self._features), mask=null_mask
         )
 
-    def encode_example(
+    def _encode_example(
         self,
         value: Union[bs.AtomArray, Dict, Biomolecule],
         is_standardised: bool = False,
     ) -> dict:
         if isinstance(value, Biomolecule):
-            return self.encode_example(
+            return self._encode_example(
                 value.atoms, is_standardised=value.is_standardised
             )
         if isinstance(value, dict):
@@ -471,7 +426,7 @@ class AtomArrayFeature(CustomFeature):
                 struct = load_structure_from_file_dict(
                     value, extra_fields=self.extra_fields
                 )
-                return self.encode_example(struct)
+                return self._encode_example(struct)
             if all([attr in value for attr in self.required_keys]):
                 return value
             else:
@@ -536,7 +491,7 @@ class AtomArrayFeature(CustomFeature):
         elif isinstance(value, (str, os.PathLike)):
             if os.path.exists(value):
                 file_type = xsplitext(value)[1][1:].lower()
-                return self.encode_example(
+                return self._encode_example(
                     load_structure(
                         value, format=file_type, extra_fields=self.extra_fields
                     )
@@ -554,11 +509,10 @@ class AtomArrayFeature(CustomFeature):
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
 
-    def _decode_example(self, value, token_per_repo_id=None):
+    def _decode_atoms(self, value, token_per_repo_id=None):
         if not isinstance(value["coords"], (np.ndarray, list)):
             return None
         # TODO: null check
-        # TODO: optimise this...if we set format to numpy, everything is a numpy array which should be ideal
         num_atoms = len(value["coords"])
         if self.all_atoms_present:
             restype_index = value.pop("restype_index")
@@ -624,45 +578,10 @@ class AtomArrayFeature(CustomFeature):
             atoms.set_annotation(key, value)
         return atoms
 
-    def decode_example(
+    def _decode_example(
         self, value: dict, token_per_repo_id=None
     ) -> Union["bs.AtomArray", None]:
-        """
-        def add_annotation(self, category, dtype):
-        Add an annotation category, if not already existing.
-
-        Initially the new annotation is filled with the *zero*
-        representation of the given type.
-
-        Parameters
-        ----------
-        category : str
-            The annotation category to be added.
-        dtype : type or str
-            A type instance or a valid *NumPy* *dtype* string.
-            Defines the type of the annotation
-
-        See Also
-        --------
-        set_annotation
-
-        Notes
-        -----
-        If the annotation category already exists, a compatible dtype is chosen,
-        that is also able to represent the old values.
-        if category not in self._annot:
-            self._annot[str(category)] = np.zeros(self._array_length, dtype=dtype)
-        elif np.can_cast(self._annot[str(category)].dtype, dtype):
-            self._annot[str(category)] = self._annot[str(category)].astype(dtype)
-        elif np.can_cast(dtype, self._annot[str(category)].dtype):
-            # The existing dtype is more general
-            pass
-        else:
-            raise ValueError(
-                f"Cannot cast '{str(category)}' "
-                f"with dtype '{self._annot[str(category)].dtype}' into '{dtype}'"
-        """
-        atoms = self._decode_example(value, token_per_repo_id=token_per_repo_id)
+        atoms = self._decode_atoms(value, token_per_repo_id=token_per_repo_id)
 
         constructor_kwargs = self.constructor_kwargs or {}
         if self.load_as == "biotite":
@@ -752,11 +671,10 @@ class StructureFeature(CustomFeature):
             extra_fields.append("charge")
         return extra_fields
 
-    def encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
+    def _encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
         """Encode example into a format for Arrow.
 
         This determines what gets written to the Arrow file.
-        TODO: accept Protein as input?
         """
         if isinstance(value, str):
             return {"path": value, "bytes": None, "type": file_type}
@@ -795,7 +713,18 @@ class StructureFeature(CustomFeature):
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
 
-    def decode_example(
+    def _decode_atoms(self, value: dict, token_per_repo_id=None):
+        if not self.decode:
+            raise RuntimeError(
+                "Decoding is disabled for this feature. Please use Structure(decode=True) instead."
+            )
+
+        atoms = load_structure_from_file_dict(
+            value, token_per_repo_id=token_per_repo_id, extra_fields=self.extra_fields
+        )
+        return atoms
+
+    def _decode_example(
         self, value: dict, token_per_repo_id=None
     ) -> Union["bs.AtomArray", None]:
         """Decode example structure file into AtomArray data.
@@ -817,14 +746,7 @@ class StructureFeature(CustomFeature):
         Returns:
             `biotite.AtomArray`
         """
-        if not self.decode:
-            raise RuntimeError(
-                "Decoding is disabled for this feature. Please use Structure(decode=True) instead."
-            )
-
-        atoms = load_structure_from_file_dict(
-            value, token_per_repo_id=token_per_repo_id, extra_fields=self.extra_fields
-        )
+        atoms = self._decode_atoms(value, token_per_repo_id=token_per_repo_id)
         if self.load_as == "biotite":
             return atoms
         elif self.load_as == "biomolecule":
@@ -925,19 +847,10 @@ class ProteinStructureFeature(StructureFeature):
             value = value[~np.isin(value.element, ["H", "D"])]
         return super().encode_example(value)
 
-    def decode_example(
+    def _decode_example(
         self, encoded: dict, token_per_repo_id=None
     ) -> Union["ProteinChain", "ProteinComplex", None]:
-        if not self.decode:
-            raise RuntimeError(
-                "Decoding is disabled for this feature. Please use Structure(decode=True) instead."
-            )
-
-        atoms = load_structure_from_file_dict(
-            encoded, token_per_repo_id=token_per_repo_id, extra_fields=self.extra_fields
-        )
-        if atoms is None:
-            return None
+        atoms = self._decode_example(encoded, token_per_repo_id=token_per_repo_id)
         # TODO: filter amino acids in encode_example also where possible
         constructor_kwargs = self.constructor_kwargs or {}
         if self.load_as == "biotite":
@@ -1053,10 +966,10 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
             return super().encode_example(value)
         return super().encode_example(value)
 
-    def decode_example(
+    def _decode_example(
         self, encoded: dict, token_per_repo_id=None
     ) -> Union["ProteinChain", "ProteinComplex", None]:
-        atoms = super()._decode_example(encoded, token_per_repo_id=token_per_repo_id)
+        atoms = self._decode_atoms(encoded, token_per_repo_id=token_per_repo_id)
         if atoms is None:
             return None
         constructor_kwargs = self.constructor_kwargs or {}

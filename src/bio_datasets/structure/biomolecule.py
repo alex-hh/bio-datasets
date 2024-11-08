@@ -1,5 +1,5 @@
 import io
-from typing import Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Generic, List, Optional, TypeVar, Union
 
 import numpy as np
 from biotite import structure as bs
