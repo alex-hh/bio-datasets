@@ -49,9 +49,14 @@ extra_annots = [
     "b_factor",
     "occupancy",
     "charge",
-    "element",  # seems redundant
     "atom_id",
 ]
+
+
+def element_from_atom_name(atom_name):
+    # TODO: write a vectorised version
+    # I think there is actually ambiguity here - CA can be alpha carbon or Calcium...
+    raise NotImplementedError()
 
 
 def filter_chains(structure, chain_ids):
@@ -111,7 +116,7 @@ def protein_atom_array_from_dict(
                     res_name=res_name,
                     hetero=False,
                     atom_name=atom_name,
-                    element=atom_name[0],
+                    element=atom_name[0],  # for protein backbone atoms this is correct
                     **annots,
                 )
                 atoms.append(atom)
@@ -332,6 +337,7 @@ class AtomArrayFeature(CustomFeature):
     chain_id: Optional[
         str
     ] = None  # single chain id - means we will intepret structure as a single chain
+    with_element: bool = True
     with_box: bool = False
     with_bonds: bool = False
     with_occupancy: bool = False
@@ -339,7 +345,6 @@ class AtomArrayFeature(CustomFeature):
     with_res_id: bool = False  # can be inferred...
     with_atom_id: bool = False
     with_charge: bool = False
-    with_element: bool = False
     with_ins_code: bool = False
     with_hetero: bool = False
     id: Optional[str] = None
@@ -603,7 +608,7 @@ class AtomArrayFeature(CustomFeature):
         atoms.coord = value.pop("coords")
         if not self.with_element:
             # TODO fix (e.g. with residue dictionary somehow)
-            atoms.set_annotation("element", np.char.array(atoms.atom_name).astype("U1"))
+            raise NotImplementedError()
         if "bond_edges" in value:
             bonds_array = value.pop("bond_edges")
             bond_types = value.pop("bond_types")
@@ -908,10 +913,6 @@ class ProteinStructureFeature(StructureFeature):
     def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
             value = value[filter_amino_acids(value)]
-            if "element" not in value._annot:
-                value.set_annotation(
-                    "element", np.char.array(value.atom_name).astype("U1")
-                )
             value = value[~np.isin(value.element, ["H", "D"])]
         return super().encode_example(value)
 
@@ -1030,10 +1031,6 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 value.atoms, is_standardised=value.is_standardised
             )
         if isinstance(value, bs.AtomArray):
-            if "element" not in value._annot:
-                value.set_annotation(
-                    "element", np.char.array(value.atom_name).astype("U1")
-                )
             if not is_standardised:
                 value = value[~np.isin(value.element, ["H", "D"])]
                 value = value[filter_amino_acids(value)]
