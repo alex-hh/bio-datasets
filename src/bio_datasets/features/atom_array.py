@@ -440,20 +440,14 @@ class AtomArrayFeature(CustomFeature):
             assert self.residue_dictionary is not None
             value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
         if self.load_as == "chain":
-            self._check_single_chain(value)
+            chain_ids = np.unique(value.chain_id)
+            assert (
+                len(chain_ids) == 1
+            ), "Only single chain supported when `load_as` == 'chain'"
         residue_starts = get_residue_starts(value)
-        self._check_residue_starts_length(residue_starts)
-        return self._build_atom_array_struct(value, residue_starts)
-
-    def _check_single_chain(self, value: bs.AtomArray):
-        chain_ids = np.unique(value.chain_id)
-        assert (
-            len(chain_ids) == 1
-        ), "Only single chain supported when `load_as` == 'chain'"
-
-    def _check_residue_starts_length(self, residue_starts: np.ndarray):
         if len(residue_starts) > 65535:
             raise ValueError("AtomArray too large to fit in uint16 (residue starts)")
+        return self._build_atom_array_struct(value, residue_starts)
 
     def _build_atom_array_struct(
         self, value: bs.AtomArray, residue_starts: np.ndarray
