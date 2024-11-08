@@ -3,7 +3,7 @@ requires = ["poetry-core>=1.0.0"]  # Use poetry-core for build-system requiremen
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "biodatasets"
+name = "datasets-bio"
 version = "0.1.0"
 description = "Fast, convenient and shareable datasets for BioML"
 authors = [
@@ -17,10 +17,10 @@ packages = [
 [tool.poetry.dependencies]
 pytest = ">=8.2.0"
 foldcomp = ">=0.0.7"
-biotite = { git = "https://github.com/biotite-dev/biotite.git" }  # TODO update when compress released (1.0.2)
-huggingface-hub = { git = "https://github.com/huggingface/huggingface_hub.git"}  # TODO update when https://github.com/huggingface/huggingface_hub/pull/2626 released
-datasets = {git = "https://github.com/alex-hh/datasets.git", rev = "iterable-dataset-fixes-new"}
-nerfax = {git = "https://github.com/PeptoneLtd/nerfax.git"}
+biotite = ">=1.0.1"
+huggingface_hub = ">=0.26.2"
+datasets-fast = ">=3.1.0"
+packaging = ">=23.2"
 
 [tool.poetry.source]
 name = "pypi"
