@@ -260,6 +260,7 @@ def _load_cif_structure(
     extra_fields=None,
     fill_missing_residues=False,
     altloc="first",
+    include_bonds=False,
 ):
     """Load a structure from cif or binary cif format.
 
@@ -291,6 +292,7 @@ def _load_cif_structure(
         extra_fields=extra_fields,
         fill_missing_residues=fill_missing_residues,
         altloc=altloc,
+        include_bonds=include_bonds,
     )
 
 
