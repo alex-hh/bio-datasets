@@ -615,6 +615,9 @@ class StructureFeature(CustomFeature):
     decode: bool = True
     load_as: str = "biotite"  # biomolecule or chain or complex or biotite; if chain must be monomer
     constructor_kwargs: dict = None
+    load_assembly: bool = (
+        False  # load full biological assembly. requires cif / bcif file type.
+    )
     with_occupancy: bool = False
     with_b_factor: bool = False
     with_atom_id: bool = False
@@ -698,17 +701,17 @@ class StructureFeature(CustomFeature):
         This determines what gets written to the Arrow file.
         """
         if isinstance(value, str):
-            return self._encode_dict({"path": value})
+            encoded = self._encode_dict({"path": value})
         elif isinstance(value, bytes):
             # just assume pdb format for now
-            return self._encode_dict({"bytes": value})
+            encoded = self._encode_dict({"bytes": value})
         elif isinstance(value, bs.AtomArray):
             if self.load_as == "chain":
                 chain_ids = np.unique(value.chain_id)
                 assert (
                     len(chain_ids) == 1
                 ), "Only single chain supported when `load_as` == 'chain'"
-            return {
+            encoded = {
                 "path": None,
                 "bytes": encode_biotite_atom_array(
                     value,
@@ -717,9 +720,15 @@ class StructureFeature(CustomFeature):
                 "type": "pdb" if not self.encode_with_foldcomp else "fcz",
             }
         elif isinstance(value, dict):
-            return self._encode_dict(value)
+            encoded = self._encode_dict(value)
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
+
+        if self.load_assembly:
+            assert encoded["type"][
+                "cif", "bcif", "cif.gz", "bcif.gz"
+            ], "load_assembly requires cif/bcif file type"
+        return encoded
 
     def _decode_atoms(self, value: dict, token_per_repo_id=None):
         if not self.decode:
