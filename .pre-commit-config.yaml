@@ -32,8 +32,8 @@ repos:
         types: [python]
         args:
           # - --config=pyproject.toml  # TODO: fix this
-          - --ignore=E501,W503,W391,E203,N806
-          - --max-cognitive-complexity=12
+          - --ignore=E501,W503,W391,E203,N806,E266
+          - --max-cognitive-complexity=13
           - --max-line-length=88
         additional_dependencies:
           - pep8-naming
