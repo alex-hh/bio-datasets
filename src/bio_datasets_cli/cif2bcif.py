@@ -66,7 +66,7 @@ def single_cif_to_bcif(
         out_block[key] = out_category
     outf = compress(outf, float_tolerance=float_rtol)
     if compress_bcif:
-        with gzip.open(output_file, "wb") as f:
+        with gzip.open(output_file + ".gz", "wb") as f:
             outf.write(f)
     else:
         outf.write(output_file)

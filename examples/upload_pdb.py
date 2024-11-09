@@ -17,7 +17,7 @@ def get_pdb_id(assembly_file):
     return os.path.basename(assembly_file).split("-")[0]
 
 
-def examples_generator(pair_codes, pdb_download_dir):
+def examples_generator(pair_codes, pdb_download_dir, compress):
     if pair_codes is None:
         result = subprocess.check_output(
             [
@@ -52,36 +52,38 @@ def examples_generator(pair_codes, pdb_download_dir):
                 check=True,
             )
 
+            converter_args = [
+                "cifs2bcifs",
+                os.path.join(pdb_download_dir, pair_code),
+                os.path.join(pdb_download_dir, pair_code),
+                "--lite",
+            ]
+            if compress:
+                converter_args.append("--compress")
             subprocess.run(
-                [
-                    "cifs2bcifs",
-                    os.path.join(pdb_download_dir, pair_code),
-                    os.path.join(pdb_download_dir, pair_code),
-                    "--lite",
-                    "--compress",
-                ],
+                converter_args,
                 check=True,
             )
             downloaded_assemblies = glob.glob(
-                os.path.join(pdb_download_dir, pair_code, "*.bcif")
+                os.path.join(
+                    pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif"
+                )
             )
             for assembly_file in downloaded_assemblies:
                 yield {
                     "id": get_pdb_id(assembly_file),
                     "structure": {
                         "path": assembly_file,
-                        "type": "bcif",
+                        "type": "bcif.gz" if compress else "bcif",
                     },
                 }
-                os.remove(assembly_file.replace(".bcif", ".cif"))
+                os.remove(assembly_file.replace(".bcif", ".cif.gz"))
 
 
 def main(args):
     features = Features(
         id=Value("string"),
-        structure=AtomArrayFeature()
-        if args.as_array
-        else StructureFeature(compression="gzip" if args.compress else None),
+        structure=AtomArrayFeature() if args.as_array else StructureFeature(),
     )
 
     with tempfile.TemporaryDirectory(dir=args.temp_dir) as temp_dir:
@@ -90,6 +92,7 @@ def main(args):
             gen_kwargs={
                 "pair_codes": args.pair_codes,
                 "pdb_download_dir": args.pdb_download_dir,
+                "compress": args.compress,
             },
             features=features,
             cache_dir=temp_dir,
@@ -122,9 +125,10 @@ if __name__ == "__main__":
         default=None,
         help="Temporary directory (for caching built dataset)",
     )
-    # TODO: compress by adding a compression arg to the feature (gzip)
     parser.add_argument(
-        "--compress", action="store_true", help="Whether to compress the dataset"
+        "--compress",
+        action="store_true",
+        help="Whether to compress the compressed bcif with gzip",
     )
     args = parser.parse_args()
     os.makedirs(args.pdb_download_dir, exist_ok=True)

@@ -178,18 +178,18 @@ def _load_from_bytes(
     file_type: str,
     extra_fields: Optional[List[str]],
 ) -> bs.AtomArray:
-    fhandler = _get_file_handler(bytes_, file_type)
+    fhandler = _file_handler_from_bytes(bytes_, file_type)
     return load_structure(
         fhandler, file_type=file_type.replace(".gz", ""), extra_fields=extra_fields
     )
 
 
-def _get_file_handler(bytes_: bytes, file_type: Optional[str]):
-    if file_type == "fcz":
+def _file_handler_from_bytes(bytes_: bytes, file_type: Optional[str]):
+    if file_type in ["fcz", "bcif"]:
         return BytesIO(bytes_)
     elif file_type.endswith(".gz"):
         decompressed = gzip.decompress(bytes_)
-        return _get_file_handler(decompressed, file_type[:-3])
+        return _file_handler_from_bytes(decompressed, file_type[:-3])
     elif file_type in ["pdb", "cif"]:
         return StringIO(bytes_.decode())
     else:
@@ -572,7 +572,8 @@ class AtomArrayFeature(CustomFeature):
 
 def file_type_from_path(path: str) -> str:
     if os.path.splitext(path)[1] == ".gz":
-        return os.path.splitext(os.path.splitext(path)[0])[1][1:] + ".gz"
+        base = os.path.splitext(os.path.splitext(path)[0])[1][1:]
+        return base + ".gz"
     else:
         return os.path.splitext(path)[1][1:]
 
@@ -658,7 +659,7 @@ class StructureFeature(CustomFeature):
     def _encode_dict(self, value: dict) -> dict:
         if value.get("path") is not None and os.path.isfile(value["path"]):
             path = value["path"]
-            file_type = file_type_from_path(path)
+            file_type = value.get("type") or file_type_from_path(path)
             # we set "bytes": None to not duplicate the data if they're already available locally; embedding happens later
             # (this assumes invocation in what context?)
             return {"bytes": None, "path": path, "type": file_type}
@@ -669,6 +670,9 @@ class StructureFeature(CustomFeature):
             if file_type is None and path is not None:
                 file_type = os.path.splitext(path)[1][1:].lower()
             if self.compression == "gzip":
+                assert not file_type.endswith(
+                    ".gz"
+                ), "Gzipped files should not be compressed again"
                 value["bytes"] = gzip.compress(value["bytes"])
                 value["type"] = value["type"] + ".gz"
             elif self.compression == "foldcomp":
