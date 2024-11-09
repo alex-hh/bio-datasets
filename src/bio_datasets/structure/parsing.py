@@ -14,6 +14,7 @@ if bio_config.FOLDCOMP_AVAILABLE:
     import foldcomp
 
 from biotite import structure as bs
+from biotite.file import InvalidFileError
 from biotite.structure.filter import (
     filter_first_altloc,
     filter_highest_occupancy_altloc,
@@ -21,9 +22,12 @@ from biotite.structure.filter import (
 from biotite.structure.io import pdbx
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io.pdbx.convert import (
+    _apply_transformations,
     _filter_model,
     _get_block,
     _get_model_starts,
+    _get_transformations,
+    _parse_operation_expression,
 )
 from biotite.structure.residues import get_residue_starts
 
@@ -189,46 +193,35 @@ def _fill_missing_residues(structure: bs.AtomArray, block):
     return filled_structure
 
 
-def _load_cif_structure(
-    fpath_or_handler,
-    file_type,
+def get_pdbx_structure(
+    pdbx_file,
+    data_block=None,
     model=1,
-    extra_fields=None,
-    fill_missing_residues=False,
     altloc="first",
+    extra_fields=None,
+    include_bonds=False,
+    fill_missing_residues: bool = False,
 ):
-    """Load a structure from cif or binary cif format.
+    """Modified from biotite.structure.io.pdbx.get_structure to return canonical chain_id and res_id
+    and also add auth_chain_id and auth_res_id annotations.
 
-    Cif files contain canonical labelling of res id chain id etc.
-    as well as 'auth' labelling, which is what is shown in the pdb file.
-
-    Optionally fill in missing residues with nan coordinates and standard atom names,
-    by cross-referencing the entity_poly_seq header with the atom_site information and
-    the CCD dictionary.
-
-    TODO: an alternative to standardising here would be standardising within standardise_atoms
-    if an additional kwarg (some map from res id to label res id) is provided.
-
-    This would then generalise to e.g. aligning to uniprot as well, which would be extremely nice.
-    Would be good to write some generic residue mapping utilites to allow this.
+    TODO: support use_author_fields. But n.b. fill_missing_polymer_chain_residues relies
+    on atoms.res_id matching the canonical `label_seq_id` res_id.
     """
-    # we use filter_altloc all to make it easier to get the chain id mapping
-    if file_type == "cif":
-        pdbxf = pdbx.CIFFile.read(fpath_or_handler)
-    else:
-        pdbxf = pdbx.BinaryCIFFile.read(fpath_or_handler)
     extra_fields = extra_fields or (["occupancy"] if altloc == "occupancy" else [])
     if "occupancy" not in extra_fields and altloc == "occupancy":
         extra_fields.append("occupancy")
     structure = pdbx.get_structure(
-        pdbxf,
+        pdbx_file,
+        data_block=data_block,
         model=model,
         extra_fields=extra_fields,
-        use_author_fields=False,  # be careful with this...
+        use_author_fields=False,
+        include_bonds=include_bonds,
         altloc="all",  # handle later so that atom site lines up
     )
     # auth_chain_id -> chain_id mapping from atom_site
-    block = _get_block(pdbxf, None)
+    block = _get_block(pdbx_file, data_block)
     atom_site = block["atom_site"]
     models = atom_site["pdbx_PDB_model_num"].as_array(np.int32)
     model_starts = _get_model_starts(models)
@@ -260,10 +253,52 @@ def _load_cif_structure(
         raise ValueError(f"'{altloc}' is not a valid 'altloc' option")
 
 
+def _load_cif_structure(
+    fpath_or_handler,
+    file_type,
+    model=1,
+    extra_fields=None,
+    fill_missing_residues=False,
+    altloc="first",
+):
+    """Load a structure from cif or binary cif format.
+
+    We wrap biotite.structure.io.pdbx.get_structure to return canonical chain_id and res_id
+    and also add auth_chain_id and auth_res_id annotations.
+
+    Cif files contain canonical labelling of res id chain id etc.
+    as well as 'auth' labelling, which is what is shown in the pdb file.
+
+    Optionally fill in missing residues with nan coordinates and standard atom names,
+    by cross-referencing the entity_poly_seq header with the atom_site information and
+    the CCD dictionary.
+
+    TODO: an alternative to standardising here would be standardising within standardise_atoms
+    if an additional kwarg (some map from res id to label res id) is provided.
+
+    This would then generalise to e.g. aligning to uniprot as well, which would be extremely nice.
+    Would be good to write some generic residue mapping utilites to allow this.
+    """
+    # we use filter_altloc all to make it easier to get the chain id mapping
+    if file_type == "cif":
+        pdbxf = pdbx.CIFFile.read(fpath_or_handler)
+    else:
+        pdbxf = pdbx.BinaryCIFFile.read(fpath_or_handler)
+    return get_pdbx_structure(
+        pdbxf,
+        data_block=None,
+        model=model,
+        extra_fields=extra_fields,
+        fill_missing_residues=fill_missing_residues,
+        altloc=altloc,
+    )
+
+
 def _load_pdb_structure(
     fpath_or_handler,
     model=1,
     extra_fields=None,
+    include_bonds=False,
 ):
     if bio_config.FASTPDB_AVAILABLE:
         pdbf = fastpdb.PDBFile.read(fpath_or_handler)
@@ -272,6 +307,7 @@ def _load_pdb_structure(
     structure = pdbf.get_structure(
         model=model,
         extra_fields=extra_fields,
+        include_bonds=include_bonds,
     )
     return structure
 
@@ -280,6 +316,7 @@ def _load_foldcomp_structure(
     fpath_or_handler,
     model=1,
     extra_fields=None,
+    include_bonds=False,
 ):
     if not bio_config.FOLDCOMP_AVAILABLE:
         raise ImportError(
@@ -298,6 +335,7 @@ def _load_foldcomp_structure(
     structure = pdbf.get_structure(
         model=model,
         extra_fields=extra_fields,
+        include_bonds=include_bonds,
     )
     return structure
 
@@ -308,6 +346,7 @@ def load_structure(
     model: int = 1,
     extra_fields=None,
     fill_missing_residues=False,
+    include_bonds=False,
 ):
     """
     TODO: support foldcomp format, binary cif format
@@ -332,6 +371,7 @@ def load_structure(
                 model=model,
                 extra_fields=extra_fields,
                 fill_missing_residues=fill_missing_residues,
+                include_bonds=include_bonds,
             )
 
     if file_type is None and isinstance(fpath_or_handler, (str, PathLike)):
@@ -354,6 +394,7 @@ def load_structure(
             model=model,
             extra_fields=extra_fields,
             fill_missing_residues=fill_missing_residues,
+            include_bonds=include_bonds,
         )
 
     elif file_type == "pdb":
@@ -361,12 +402,128 @@ def load_structure(
             fpath_or_handler,
             model=model,
             extra_fields=extra_fields,
+            include_bonds=include_bonds,
         )
     elif file_type == "fcz":
         return _load_foldcomp_structure(
             fpath_or_handler,
             model=model,
             extra_fields=extra_fields,
+            include_bonds=include_bonds,
+        )
+    else:
+        raise ValueError(f"Unsupported file format: {file_type}")
+
+
+def get_assembly_with_missing_residues(  # noqa: CCR001
+    pdbx_file,
+    data_block=None,
+    assembly_id=None,
+    model=None,
+    altloc="first",
+    extra_fields=None,
+    include_bonds=False,
+):
+    """Modified from biotite.structure.io.pdbx.get_assembly to fill in missing residues.
+
+    We also return `label` fields rather than `auth` fields, but add `auth` fields as annotations.
+    """
+    block = _get_block(pdbx_file, data_block)
+
+    try:
+        assembly_gen_category = block["pdbx_struct_assembly_gen"]
+    except KeyError:
+        raise InvalidFileError("File has no 'pdbx_struct_assembly_gen' category")
+
+    try:
+        struct_oper_category = block["pdbx_struct_oper_list"]
+    except KeyError:
+        raise InvalidFileError("File has no 'pdbx_struct_oper_list' category")
+
+    assembly_ids = assembly_gen_category["assembly_id"].as_array(str)
+    if assembly_id is None:
+        assembly_id = assembly_ids[0]
+    elif assembly_id not in assembly_ids:
+        raise KeyError(f"File has no Assembly ID '{assembly_id}'")
+
+    ### Calculate all possible transformations
+    transformations = _get_transformations(struct_oper_category)
+
+    ### Get structure according to additional parameters
+    # Include 'label_asym_id' as annotation array
+    # for correct asym ID filtering
+    extra_fields = [] if extra_fields is None else extra_fields
+    if "label_asym_id" in extra_fields:
+        extra_fields_and_asym = extra_fields
+    else:
+        # The operations apply on asym IDs
+        # -> they need to be included to select the correct atoms
+        extra_fields_and_asym = extra_fields + ["label_asym_id"]
+    structure = get_pdbx_structure(
+        pdbx_file,
+        data_block=data_block,
+        model=model,
+        altloc=altloc,
+        extra_fields=extra_fields_and_asym,
+        include_bonds=include_bonds,
+    )
+
+    ### Get transformations and apply them to the affected asym IDs
+    assembly = None
+    for _id, op_expr, asym_id_expr in zip(
+        assembly_gen_category["assembly_id"].as_array(str),
+        assembly_gen_category["oper_expression"].as_array(str),
+        assembly_gen_category["asym_id_list"].as_array(str),
+    ):
+        # Find the operation expressions for given assembly ID
+        # We already asserted that the ID is actually present
+        if _id == assembly_id:
+            operations = _parse_operation_expression(op_expr)
+            asym_ids = asym_id_expr.split(",")
+            # Filter affected asym IDs
+            sub_structure = structure[..., np.isin(structure.label_asym_id, asym_ids)]
+            sub_assembly = _apply_transformations(
+                sub_structure, transformations, operations
+            )
+            # Merge the chains with asym IDs for this operation
+            # with chains from other operations
+            if assembly is None:
+                assembly = sub_assembly
+            else:
+                assembly += sub_assembly
+
+    # Remove 'label_asym_id', if it was not included in the original
+    # user-supplied 'extra_fields'
+    if "label_asym_id" not in extra_fields:
+        assembly.del_annotation("label_asym_id")
+
+    return assembly
+
+
+def load_assembly(
+    fpath_or_handler,
+    file_type="cif",
+    model=1,
+    assembly_id=None,
+    extra_fields=None,
+    fill_missing_residues=False,
+    include_bonds=False,
+):
+    """Load biological assembly from cif/bcif file.
+
+    TODO: add support for pdb files.
+    """
+    if file_type in ["cif", "bcif"]:
+        cf = pdbx.CIFFile.read(fpath_or_handler)
+        return get_assembly_with_missing_residues(
+            cf,
+            data_block=None,
+            assembly_id=assembly_id,
+            model=model,
+            altloc="first",
+            extra_fields=extra_fields,
+            include_bonds=include_bonds,
+            fill_missing_residues=fill_missing_residues,
         )
     else:
         raise ValueError(f"Unsupported file format: {file_type}")
