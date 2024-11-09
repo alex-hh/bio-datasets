@@ -10,6 +10,7 @@ import os
 
 from biotite.structure.io.pdbx import BinaryCIFFile, CIFFile, compress
 from biotite.structure.io.pdbx.convert import _get_block, _get_or_create_block
+from joblib import Parallel, delayed
 
 # inferred from 1aq1 binary cif file provided by pdb.
 with open(os.path.join(os.path.dirname(__file__), "bcif_dtypes.json"), "r") as f:
@@ -72,6 +73,7 @@ def create_parser():
     parser.add_argument("output_path", type=str)
     parser.add_argument("--lite", action="store_true")
     parser.add_argument("--float_rtol", type=float, default=1e-6)
+    parser.add_argument("--n_jobs", type=int, default=-1)
     return parser
 
 
@@ -86,21 +88,32 @@ def main():
     )
 
 
+def process_file(file, output_path, lite, float_rtol):
+    if file.endswith(".gz"):
+        new_file = os.path.splitext(os.path.splitext(file)[0])[0]
+    else:
+        new_file = os.path.splitext(file)[0]
+    output_file = os.path.join(output_path, os.path.basename(new_file) + ".bcif")
+    single_cif_to_bcif(
+        file,
+        output_file,
+        lite=lite,
+        float_rtol=float_rtol,
+    )
+
+
 def dir_main():
     parser = create_parser()
     args = parser.parse_args()
-    for file in os.listdir(args.input_path):
-        if file.endswith(".gz"):
-            new_file = os.path.splitext(os.path.splitext(file)[0])[0]
-        else:
-            new_file = os.path.splitext(file)[0]
-        output_file = os.path.join(args.output_path, new_file + ".bcif")
-        single_cif_to_bcif(
+    Parallel(n_jobs=args.n_jobs)(
+        delayed(process_file)(
             os.path.join(args.input_path, file),
-            output_file,
-            lite=args.lite,
-            float_rtol=args.float_rtol,
+            args.output_path,
+            args.lite,
+            args.float_rtol,
         )
+        for file in os.listdir(args.input_path)
+    )
 
 
 if __name__ == "__main__":
