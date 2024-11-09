@@ -5,6 +5,7 @@ Ultimately what we want to be able to do is to infer the assembly from the coord
 import argparse
 import glob
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -34,7 +35,7 @@ def examples_generator(pair_codes, pdb_download_dir):
         print("ALL PAIR CODES: ", pair_codes)
     else:
         for pair_code in pair_codes:
-            print(f"DOWNLOADING {pair_code}")
+            shutil.rmtree(os.path.join(pdb_download_dir, pair_code), ignore_errors=True)
             os.makedirs(os.path.join(pdb_download_dir, pair_code), exist_ok=True)
             # download from s3
             # TODO use boto3
@@ -57,6 +58,7 @@ def examples_generator(pair_codes, pdb_download_dir):
                     os.path.join(pdb_download_dir, pair_code),
                     os.path.join(pdb_download_dir, pair_code),
                     "--lite",
+                    "--compress",
                 ],
                 check=True,
             )

@@ -10,7 +10,7 @@ import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from io import BytesIO, StringIO
-from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
+from typing import Any, ClassVar, Dict, List, Optional, Union
 
 import numpy as np
 import pyarrow as pa
@@ -469,11 +469,12 @@ class AtomArrayFeature(CustomFeature):
         raise ValueError(f"Path does not exist: {value}")
 
     def _encode_bytes(self, value: bytes) -> dict:
-        file_type = infer_bytes_format(value)
-        fhandler = BytesIO(value)
-        return self.encode_example(
-            load_structure(fhandler, format=file_type, extra_fields=self.extra_fields)
-        )
+        raise NotImplementedError("Not implemented")
+        # file_type = infer_bytes_format(value)
+        # fhandler = BytesIO(value)
+        # return self.encode_example(
+        #     load_structure(fhandler, format=file_type, extra_fields=self.extra_fields)
+        # )
 
     def _decode_atoms(self, value, token_per_repo_id=None):
         if not isinstance(value["coords"], (np.ndarray, list)):
@@ -571,7 +572,7 @@ class AtomArrayFeature(CustomFeature):
 
 def file_type_from_path(path: str) -> str:
     if os.path.splitext(path)[1] == ".gz":
-        return os.path.splitext(os.path.splitext(path)[0])[1][1:]
+        return os.path.splitext(os.path.splitext(path)[0])[1][1:] + ".gz"
     else:
         return os.path.splitext(path)[1][1:]
 
@@ -793,12 +794,9 @@ class StructureFeature(CustomFeature):
 
         @no_op_if_value_is_null
         def path_to_bytes(path):
+            # could be gzipped or foldcomp compressed already
             with xopen(path, "rb") as f:
                 bytes_ = f.read()
-            if path.endswith(".gz"):
-                assert is_local_path(path), "Gzipped files must have local file paths."
-                with gzip.open(path, "rb") as f:
-                    bytes_ = f.read()
             if self.compression == "gzip" and not path.endswith(".gz"):
                 bytes_ = gzip.compress(bytes_)
             elif self.compression == "foldcomp" and not path.endswith(".fcz"):

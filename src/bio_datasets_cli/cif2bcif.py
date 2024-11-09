@@ -40,6 +40,7 @@ def single_cif_to_bcif(
     output_file: str,
     lite: bool = False,
     float_rtol: float = 1e-6,
+    compress_bcif: bool = False,
 ):
     if input_file.endswith(".gz"):
         with gzip.open(input_file, "rt") as f:
@@ -64,7 +65,11 @@ def single_cif_to_bcif(
             out_category[in_column] = arr
         out_block[key] = out_category
     outf = compress(outf, float_tolerance=float_rtol)
-    outf.write(output_file)
+    if compress_bcif:
+        with gzip.open(output_file, "wb") as f:
+            outf.write(f)
+    else:
+        outf.write(output_file)
 
 
 def create_parser():
@@ -74,6 +79,7 @@ def create_parser():
     parser.add_argument("--lite", action="store_true")
     parser.add_argument("--float_rtol", type=float, default=1e-6)
     parser.add_argument("--n_jobs", type=int, default=-1)
+    parser.add_argument("--compress", action="store_true")
     return parser
 
 
@@ -85,10 +91,14 @@ def main():
         args.output_path,
         lite=args.lite,
         float_rtol=args.float_rtol,
+        compress_bcif=args.compress,
     )
 
 
-def process_file(file, output_path, lite, float_rtol):
+def process_file(file, output_path, lite, float_rtol=1e-6, compress_bcif=False):
+    assert file.endswith(".cif") or file.endswith(
+        ".cif.gz"
+    ), f"file must end with .cif or .cif.gz: {file}"
     if file.endswith(".gz"):
         new_file = os.path.splitext(os.path.splitext(file)[0])[0]
     else:
@@ -99,6 +109,7 @@ def process_file(file, output_path, lite, float_rtol):
         output_file,
         lite=lite,
         float_rtol=float_rtol,
+        compress_bcif=compress_bcif,
     )
 
 
@@ -111,6 +122,7 @@ def dir_main():
             args.output_path,
             args.lite,
             args.float_rtol,
+            args.compress,
         )
         for file in os.listdir(args.input_path)
     )
