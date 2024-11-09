@@ -1,6 +1,14 @@
 """We upload asymmetric units.
 
 Ultimately what we want to be able to do is to infer the assembly from the coordinates for a single repeating unit.
+
+Before running this script, download the PDB data to the directory specified by `--pdb_download_dir`.
+
+e.g. with:
+
+```
+aws s3 cp --recursive --no-sign-request s3://pdbsnapshots/20240101/pub/pdb/data/structures/divided/mmCIF/ <path>
+```
 """
 import argparse
 import glob
@@ -39,6 +47,7 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
         # download from s3
         # TODO use boto3
         if not os.path.exists(os.path.join(pdb_download_dir, pair_code)):
+            # intended that the directory is already downloaded - this is a backup
             subprocess.run(
                 [
                     "aws",
@@ -52,6 +61,7 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
                 check=True,
             )
 
+        if glob.glob(os.path.join(pdb_download_dir, pair_code, "*.cif.gz")):
             converter_args = [
                 "cifs2bcifs",
                 os.path.join(pdb_download_dir, pair_code),
@@ -64,6 +74,10 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
                 converter_args,
                 check=True,
             )
+
+        assert not glob.glob(
+            os.path.join(pdb_download_dir, pair_code, "*.bcif.gz")
+        ), "bCIF.GZ files should not exist"
 
         downloaded_assemblies = glob.glob(
             os.path.join(
