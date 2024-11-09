@@ -26,11 +26,15 @@ from datasets.utils.file_utils import is_local_path, xopen, xsplitext
 from datasets.utils.py_utils import no_op_if_value_is_null, string_to_dict
 
 from bio_datasets import config as bio_config
-from bio_datasets.structure import Biomolecule, BiomoleculeChain, BiomoleculeComplex
+from bio_datasets.structure import (
+    Biomolecule,
+    BiomoleculeChain,
+    BiomoleculeComplex,
+    parsing,
+)
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
 )
-from bio_datasets.structure.parsing import load_structure
 from bio_datasets.structure.protein import (
     ProteinChain,
     ProteinComplex,
@@ -130,6 +134,9 @@ def load_structure_from_file_dict(
     d: dict,
     token_per_repo_id: Optional[Dict[str, int]] = None,
     extra_fields: Optional[List[str]] = None,
+    fill_missing_residues: bool = False,
+    load_assembly: bool = False,
+    include_bonds: bool = False,
 ) -> bs.AtomArray:
     token_per_repo_id = token_per_repo_id or {}
 
@@ -139,23 +146,35 @@ def load_structure_from_file_dict(
 
     if bytes_ is None:
         assert path is not None, "path is required when bytes is None"
-        return _load_from_path(path, file_type, extra_fields, token_per_repo_id, d)
+        return _load_from_path(
+            path,
+            file_type,
+            extra_fields,
+            token_per_repo_id,
+            fill_missing_residues=fill_missing_residues,
+            load_assembly=load_assembly,
+            include_bonds=include_bonds,
+        )
     else:
-        return _load_from_bytes(bytes_, file_type, extra_fields)
+        return _load_from_bytes(
+            bytes_,
+            file_type,
+            extra_fields,
+            fill_missing_residues=fill_missing_residues,
+            load_assembly=load_assembly,
+            include_bonds=include_bonds,
+        )
 
 
-def _load_from_path(
-    path: Optional[str],
+def _load_from_url(
+    path: str,
     file_type: str,
     extra_fields: Optional[List[str]],
     token_per_repo_id: Dict[str, int],
+    fill_missing_residues: bool = False,
+    load_assembly: bool = False,
+    include_bonds: bool = False,
 ) -> bs.AtomArray:
-
-    if is_local_path(path):
-        return load_structure(
-            path, file_type=file_type.replace(".gz", ""), extra_fields=extra_fields
-        )
-
     source_url = path.split("::")[-1]
     pattern = (
         config.HUB_DATASETS_URL
@@ -170,18 +189,89 @@ def _load_from_path(
 
     download_config = DownloadConfig(token=token)
     with xopen(path, "r", download_config=download_config) as f:
-        return load_structure(f, file_type=file_type, extra_fields=extra_fields)
+        if load_assembly:
+            return parsing.load_assembly(
+                f,
+                file_type=file_type,
+                extra_fields=extra_fields,
+                include_bonds=include_bonds,
+                fill_missing_residues=fill_missing_residues,
+            )
+        else:
+            return parsing.load_structure(
+                f,
+                file_type=file_type,
+                extra_fields=extra_fields,
+                fill_missing_residues=fill_missing_residues,
+                include_bonds=include_bonds,
+            )
+
+
+def _load_from_path(
+    path: Optional[str],
+    file_type: str,
+    extra_fields: Optional[List[str]],
+    token_per_repo_id: Dict[str, int],
+    fill_missing_residues: bool = False,
+    load_assembly: bool = False,
+    include_bonds: bool = False,
+) -> bs.AtomArray:
+
+    if is_local_path(path):
+        if load_assembly:
+            return parsing.load_assembly(
+                path,
+                file_type=file_type.replace(".gz", ""),
+                extra_fields=extra_fields,
+                include_bonds=include_bonds,
+                fill_missing_residues=fill_missing_residues,
+            )
+        else:
+            return parsing.load_structure(
+                path,
+                file_type=file_type.replace(".gz", ""),
+                extra_fields=extra_fields,
+                fill_missing_residues=fill_missing_residues,
+                include_bonds=include_bonds,
+            )
+
+    else:
+        return _load_from_url(
+            path,
+            file_type=file_type.replace(".gz", ""),
+            extra_fields=extra_fields,
+            token_per_repo_id=token_per_repo_id,
+            fill_missing_residues=fill_missing_residues,
+            load_assembly=load_assembly,
+            include_bonds=include_bonds,
+        )
 
 
 def _load_from_bytes(
     bytes_: bytes,
     file_type: str,
     extra_fields: Optional[List[str]],
+    fill_missing_residues: bool = False,
+    load_assembly: bool = False,
+    include_bonds: bool = False,
 ) -> bs.AtomArray:
     fhandler = _file_handler_from_bytes(bytes_, file_type)
-    return load_structure(
-        fhandler, file_type=file_type.replace(".gz", ""), extra_fields=extra_fields
-    )
+    if load_assembly:
+        return parsing.load_assembly(
+            fhandler,
+            file_type=file_type.replace(".gz", ""),
+            extra_fields=extra_fields,
+            fill_missing_residues=fill_missing_residues,
+            include_bonds=include_bonds,
+        )
+    else:
+        return parsing.load_structure(
+            fhandler,
+            file_type=file_type.replace(".gz", ""),
+            extra_fields=extra_fields,
+            fill_missing_residues=fill_missing_residues,
+            include_bonds=include_bonds,
+        )
 
 
 def _file_handler_from_bytes(bytes_: bytes, file_type: Optional[str]):
@@ -242,6 +332,7 @@ class AtomArrayFeature(CustomFeature):
         False  # when all atoms are present, we dont need to store atom name
     )
     decode: bool = True
+    encode_assembly: bool = False
     load_as: str = "biotite"  # biomolecule or chain or complex or biotite; if chain must be monomer
     constructor_kwargs: Optional[Dict] = None
     coords_dtype: str = "float32"
@@ -314,6 +405,10 @@ class AtomArrayFeature(CustomFeature):
         if not self.with_element and not self.all_atoms_present:
             # TODO: support element inference
             raise ValueError("with_element must be True if all_atoms_present is False")
+        if self.encode_assembly or self.with_bonds:
+            raise NotImplementedError(
+                "Not implemented"
+            )  # proper loading, encoding and decoding needed
 
     def __call__(self):
         return get_nested_type(self._features)
@@ -464,7 +559,9 @@ class AtomArrayFeature(CustomFeature):
         if os.path.exists(value):
             file_type = xsplitext(value)[1][1:].lower()
             return self._encode_example(
-                load_structure(value, format=file_type, extra_fields=self.extra_fields)
+                parsing.load_structure(
+                    value, format=file_type, extra_fields=self.extra_fields
+                )
             )
         raise ValueError(f"Path does not exist: {value}")
 
@@ -618,6 +715,8 @@ class StructureFeature(CustomFeature):
     load_assembly: bool = (
         False  # load full biological assembly. requires cif / bcif file type.
     )
+    fill_missing_residues: bool = False  # fill in missing residues from entity_poly_seq
+    include_bonds: bool = False  # include bonds in the AtomArray
     with_occupancy: bool = False
     with_b_factor: bool = False
     with_atom_id: bool = False
@@ -724,10 +823,10 @@ class StructureFeature(CustomFeature):
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
 
-        if self.load_assembly:
+        if self.load_assembly or self.fill_missing_residues:
             assert encoded["type"][
                 "cif", "bcif", "cif.gz", "bcif.gz"
-            ], "load_assembly requires cif/bcif file type"
+            ], "load_assembly and fill_missing_residues require cif/bcif file type"
         return encoded
 
     def _decode_atoms(self, value: dict, token_per_repo_id=None):
@@ -737,7 +836,12 @@ class StructureFeature(CustomFeature):
             )
 
         atoms = load_structure_from_file_dict(
-            value, token_per_repo_id=token_per_repo_id, extra_fields=self.extra_fields
+            value,
+            token_per_repo_id=token_per_repo_id,
+            extra_fields=self.extra_fields,
+            fill_missing_residues=self.fill_missing_residues,
+            load_assembly=self.load_assembly,
+            include_bonds=self.include_bonds,
         )
         return atoms
 
