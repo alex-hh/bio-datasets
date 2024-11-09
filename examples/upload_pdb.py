@@ -32,13 +32,13 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
         pair_codes = [
             line.split()[1][:-1] for line in result.splitlines() if "PRE" in line
         ]
-        print("ALL PAIR CODES: ", pair_codes)
-    else:
-        for pair_code in pair_codes:
-            shutil.rmtree(os.path.join(pdb_download_dir, pair_code), ignore_errors=True)
-            os.makedirs(os.path.join(pdb_download_dir, pair_code), exist_ok=True)
-            # download from s3
-            # TODO use boto3
+
+    for pair_code in pair_codes:
+        shutil.rmtree(os.path.join(pdb_download_dir, pair_code), ignore_errors=True)
+        os.makedirs(os.path.join(pdb_download_dir, pair_code), exist_ok=True)
+        # download from s3
+        # TODO use boto3
+        if not os.path.exists(os.path.join(pdb_download_dir, pair_code)):
             subprocess.run(
                 [
                     "aws",
@@ -64,20 +64,24 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
                 converter_args,
                 check=True,
             )
-            downloaded_assemblies = glob.glob(
-                os.path.join(
-                    pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif"
-                )
+
+        downloaded_assemblies = glob.glob(
+            os.path.join(
+                pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif"
             )
-            for assembly_file in downloaded_assemblies:
-                yield {
-                    "id": get_pdb_id(assembly_file),
-                    "structure": {
-                        "path": assembly_file,
-                        "type": "bcif.gz" if compress else "bcif",
-                    },
-                }
-                os.remove(assembly_file.replace(".bcif", ".cif.gz"))
+        )
+        assert len(downloaded_assemblies) > 0, f"No assemblies found for {pair_code}"
+        for assembly_file in downloaded_assemblies:
+            yield {
+                "id": get_pdb_id(assembly_file),
+                "structure": {
+                    "path": assembly_file,
+                    "type": "bcif.gz" if compress else "bcif",
+                },
+            }
+            os.remove(
+                assembly_file.replace(".bcif.gz" if compress else ".bcif", ".cif.gz")
+            )
 
 
 def main(args):
