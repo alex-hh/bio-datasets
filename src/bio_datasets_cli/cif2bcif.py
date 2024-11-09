@@ -38,6 +38,7 @@ def single_cif_to_bcif(
     input_file: str,
     output_file: str,
     lite: bool = False,
+    float_rtol: float = 1e-6,
 ):
     if input_file.endswith(".gz"):
         with gzip.open(input_file, "rt") as f:
@@ -61,7 +62,7 @@ def single_cif_to_bcif(
 
             out_category[in_column] = arr
         out_block[key] = out_category
-    outf = compress(outf)
+    outf = compress(outf, float_tolerance=float_rtol)
     outf.write(output_file)
 
 
@@ -70,6 +71,7 @@ def create_parser():
     parser.add_argument("input_path", type=str)
     parser.add_argument("output_path", type=str)
     parser.add_argument("--lite", action="store_true")
+    parser.add_argument("--float_rtol", type=float, default=1e-6)
     return parser
 
 
@@ -80,6 +82,7 @@ def main():
         args.input_path,
         args.output_path,
         lite=args.lite,
+        float_rtol=args.float_rtol,
     )
 
 
@@ -87,11 +90,16 @@ def dir_main():
     parser = create_parser()
     args = parser.parse_args()
     for file in os.listdir(args.input_path):
-        output_file = os.path.join(args.output_path, file + ".bcif")
+        if file.endswith(".gz"):
+            new_file = os.path.splitext(os.path.splitext(file)[0])[0]
+        else:
+            new_file = os.path.splitext(file)[0]
+        output_file = os.path.join(args.output_path, new_file + ".bcif")
         single_cif_to_bcif(
             os.path.join(args.input_path, file),
             output_file,
             lite=args.lite,
+            float_rtol=args.float_rtol,
         )
 
 

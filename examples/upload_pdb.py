@@ -77,7 +77,9 @@ def examples_generator(pair_codes, pdb_download_dir):
 def main(args):
     features = Features(
         id=Value("string"),
-        structure=AtomArrayFeature() if args.as_array else StructureFeature(compression="gzip" if args.compress else None),
+        structure=AtomArrayFeature()
+        if args.as_array
+        else StructureFeature(compression="gzip" if args.compress else None),
     )
 
     with tempfile.TemporaryDirectory(dir=args.temp_dir) as temp_dir:
@@ -85,6 +87,7 @@ def main(args):
             examples_generator,
             gen_kwargs={
                 "pair_codes": args.pair_codes,
+                "pdb_download_dir": args.pdb_download_dir,
             },
             features=features,
             cache_dir=temp_dir,
@@ -114,7 +117,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--temp_dir",
         type=str,
-        default="temp",
+        default=None,
         help="Temporary directory (for caching built dataset)",
     )
     # TODO: compress by adding a compression arg to the feature (gzip)
@@ -122,5 +125,8 @@ if __name__ == "__main__":
         "--compress", action="store_true", help="Whether to compress the dataset"
     )
     args = parser.parse_args()
+    os.makedirs(args.pdb_download_dir, exist_ok=True)
+    if args.temp_dir is not None:
+        os.makedirs(args.temp_dir, exist_ok=True)
 
     main(args)
