@@ -51,25 +51,28 @@ def single_cif_to_bcif(
     out_block = _get_or_create_block(outf, "1aq1")
     Category = out_block.subcomponent_class()
     in_block = _get_block(inf, None)
-    for key, in_category in in_block.items():
-        if lite and key not in LITE_COLUMNS_TO_KEEP:
-            continue
-        out_category = Category()
-        for in_column, in_data in in_category.items():
-            try:
-                # exptl_crystal is causing type coercion issues. TODO: fix
-                arr = in_data.as_array(BCIF_FILE_DTYPES[key][in_column])
-            except Exception:
-                arr = in_data.as_array()
+    try:
+        for key, in_category in in_block.items():
+            if lite and key not in LITE_COLUMNS_TO_KEEP:
+                continue
+            out_category = Category()
+            for in_column, in_data in in_category.items():
+                try:
+                    # exptl_crystal is causing type coercion issues. TODO: fix
+                    arr = in_data.as_array(BCIF_FILE_DTYPES[key][in_column])
+                except Exception:
+                    arr = in_data.as_array()
 
-            out_category[in_column] = arr
-        out_block[key] = out_category
-    outf = compress(outf, float_tolerance=float_rtol)
-    if compress_bcif:
-        with gzip.open(output_file + ".gz", "wb") as f:
-            outf.write(f)
-    else:
-        outf.write(output_file)
+                out_category[in_column] = arr
+            out_block[key] = out_category
+        outf = compress(outf, float_tolerance=float_rtol)
+        if compress_bcif:
+            with gzip.open(output_file + ".gz", "wb") as f:
+                outf.write(f)
+        else:
+            outf.write(output_file)
+    except Exception as e:
+        print(f"Error converting {input_file} to {output_file}: {e}")
 
 
 def create_parser():

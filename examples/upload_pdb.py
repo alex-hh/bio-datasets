@@ -25,7 +25,7 @@ def get_pdb_id(assembly_file):
     return os.path.basename(assembly_file).split("-")[0]
 
 
-def examples_generator(pair_codes, pdb_download_dir, compress):
+def examples_generator(pair_codes, pdb_download_dir, compress, remove_cif: bool = False):
     if pair_codes is None:
         result = subprocess.check_output(
             [
@@ -42,12 +42,10 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
         ]
 
     for pair_code in pair_codes:
-        shutil.rmtree(os.path.join(pdb_download_dir, pair_code), ignore_errors=True)
-        os.makedirs(os.path.join(pdb_download_dir, pair_code), exist_ok=True)
-        # download from s3
-        # TODO use boto3
         if not os.path.exists(os.path.join(pdb_download_dir, pair_code)):
-            # intended that the directory is already downloaded - this is a backup
+            # download from s3 -- intended that all the data is already downloaded, this is a backup
+            # TODO use boto3
+            os.makedirs(os.path.join(pdb_download_dir, pair_code), exist_ok=True)
             subprocess.run(
                 [
                     "aws",
@@ -61,7 +59,11 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
                 check=True,
             )
 
-        if glob.glob(os.path.join(pdb_download_dir, pair_code, "*.cif.gz")):
+        cif_files = glob.glob(os.path.join(pdb_download_dir, pair_code, "*.cif.gz"))
+        if cif_files and not glob.glob(
+            os.path.join(pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif")
+        ):
+            print(f"Converting CIFs to bCIFs for {pair_code}")
             converter_args = [
                 "cifs2bcifs",
                 os.path.join(pdb_download_dir, pair_code),
@@ -75,17 +77,14 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
                 check=True,
             )
 
-        assert not glob.glob(
-            os.path.join(pdb_download_dir, pair_code, "*.bcif.gz")
-        ), "bCIF.GZ files should not exist"
-
-        downloaded_assemblies = glob.glob(
+        downloaded_bcifs = glob.glob(
             os.path.join(
                 pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif"
             )
         )
-        assert len(downloaded_assemblies) > 0, f"No assemblies found for {pair_code}"
-        for assembly_file in downloaded_assemblies:
+        if not downloaded_bcifs:
+            raise ValueError(f"No assemblies found for {pair_code}")
+        for assembly_file in downloaded_bcifs:
             yield {
                 "id": get_pdb_id(assembly_file),
                 "structure": {
@@ -93,9 +92,10 @@ def examples_generator(pair_codes, pdb_download_dir, compress):
                     "type": "bcif.gz" if compress else "bcif",
                 },
             }
-            os.remove(
-                assembly_file.replace(".bcif.gz" if compress else ".bcif", ".cif.gz")
-            )
+            if remove_cif:
+                os.remove(
+                    assembly_file.replace(".bcif.gz" if compress else ".bcif", ".cif.gz")
+                )
 
 
 def main(args):
@@ -111,6 +111,7 @@ def main(args):
                 "pair_codes": args.pair_codes,
                 "pdb_download_dir": args.pdb_download_dir,
                 "compress": args.compress,
+                "remove_cif": args.remove_cif,
             },
             features=features,
             cache_dir=temp_dir,
@@ -147,6 +148,11 @@ if __name__ == "__main__":
         "--compress",
         action="store_true",
         help="Whether to compress the compressed bcif with gzip",
+    )
+    parser.add_argument(
+        "--remove_cif",
+        action="store_true",
+        help="Whether to remove the original CIF files after conversion",
     )
     args = parser.parse_args()
     os.makedirs(args.pdb_download_dir, exist_ok=True)
