@@ -89,10 +89,14 @@ def examples_generator(
         if not downloaded_bcifs:
             raise ValueError(f"No assemblies found for {pair_code}")
         for assembly_file in downloaded_bcifs:
+            # TODO: use bytes instead.
+            # https://github.com/huggingface/datasets/issues/6051#issuecomment-1642443668
+            with open(assembly_file, "rb") as f:
+                pdb_bytes = f.read()
             yield {
                 "id": get_pdb_id(assembly_file),
                 "structure": {
-                    "path": assembly_file,
+                    "bytes": pdb_bytes,
                     "type": "bcif.gz" if compress else "bcif",
                 },
             }
@@ -122,8 +126,13 @@ def main(args):
             features=features,
             cache_dir=temp_dir,
             split=NamedSplit("train"),
+            num_proc=args.num_proc,
         )
-        ds.push_to_hub("biodatasets/pdb", config_name=args.config_name or "default")
+        ds.push_to_hub(
+            "biodatasets/pdb",
+            config_name=args.config_name or "default",
+            max_shard_size="350MB",
+        )
 
 
 if __name__ == "__main__":
@@ -159,6 +168,12 @@ if __name__ == "__main__":
         "--remove_cif",
         action="store_true",
         help="Whether to remove the original CIF files after conversion",
+    )
+    parser.add_argument(
+        "--num_proc",
+        type=int,
+        default=1,
+        help="Number of processes to use",
     )
     args = parser.parse_args()
     os.makedirs(args.pdb_download_dir, exist_ok=True)
