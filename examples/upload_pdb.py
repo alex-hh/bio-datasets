@@ -25,7 +25,9 @@ def get_pdb_id(assembly_file):
     return os.path.basename(assembly_file).split("-")[0]
 
 
-def examples_generator(pair_codes, pdb_download_dir, compress, remove_cif: bool = False):
+def examples_generator(
+    pair_codes, pdb_download_dir, compress, remove_cif: bool = False
+):
     if pair_codes is None:
         result = subprocess.check_output(
             [
@@ -61,7 +63,9 @@ def examples_generator(pair_codes, pdb_download_dir, compress, remove_cif: bool 
 
         cif_files = glob.glob(os.path.join(pdb_download_dir, pair_code, "*.cif.gz"))
         if cif_files and not glob.glob(
-            os.path.join(pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif")
+            os.path.join(
+                pdb_download_dir, pair_code, "*.bcif.gz" if compress else "*.bcif"
+            )
         ):
             print(f"Converting CIFs to bCIFs for {pair_code}")
             converter_args = [
@@ -94,7 +98,9 @@ def examples_generator(pair_codes, pdb_download_dir, compress, remove_cif: bool 
             }
             if remove_cif:
                 os.remove(
-                    assembly_file.replace(".bcif.gz" if compress else ".bcif", ".cif.gz")
+                    assembly_file.replace(
+                        ".bcif.gz" if compress else ".bcif", ".cif.gz"
+                    )
                 )
 
 

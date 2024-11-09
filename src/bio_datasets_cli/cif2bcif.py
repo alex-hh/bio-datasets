@@ -51,28 +51,25 @@ def single_cif_to_bcif(
     out_block = _get_or_create_block(outf, "1aq1")
     Category = out_block.subcomponent_class()
     in_block = _get_block(inf, None)
-    try:
-        for key, in_category in in_block.items():
-            if lite and key not in LITE_COLUMNS_TO_KEEP:
-                continue
-            out_category = Category()
-            for in_column, in_data in in_category.items():
-                try:
-                    # exptl_crystal is causing type coercion issues. TODO: fix
-                    arr = in_data.as_array(BCIF_FILE_DTYPES[key][in_column])
-                except Exception:
-                    arr = in_data.as_array()
+    for key, in_category in in_block.items():
+        if lite and key not in LITE_COLUMNS_TO_KEEP:
+            continue
+        out_category = Category()
+        for in_column, in_data in in_category.items():
+            try:
+                # exptl_crystal is causing type coercion issues. TODO: fix
+                arr = in_data.as_array(BCIF_FILE_DTYPES[key][in_column])
+            except Exception:
+                arr = in_data.as_array()
 
-                out_category[in_column] = arr
-            out_block[key] = out_category
-        outf = compress(outf, float_tolerance=float_rtol)
-        if compress_bcif:
-            with gzip.open(output_file + ".gz", "wb") as f:
-                outf.write(f)
-        else:
-            outf.write(output_file)
-    except Exception as e:
-        print(f"Error converting {input_file} to {output_file}: {e}")
+            out_category[in_column] = arr
+        out_block[key] = out_category
+    outf = compress(outf, float_tolerance=float_rtol)
+    if compress_bcif:
+        with gzip.open(output_file + ".gz", "wb") as f:
+            outf.write(f)
+    else:
+        outf.write(output_file)
 
 
 def create_parser():
@@ -107,13 +104,16 @@ def process_file(file, output_path, lite, float_rtol=1e-6, compress_bcif=False):
     else:
         new_file = os.path.splitext(file)[0]
     output_file = os.path.join(output_path, os.path.basename(new_file) + ".bcif")
-    single_cif_to_bcif(
-        file,
-        output_file,
-        lite=lite,
-        float_rtol=float_rtol,
-        compress_bcif=compress_bcif,
-    )
+    try:
+        single_cif_to_bcif(
+            file,
+            output_file,
+            lite=lite,
+            float_rtol=float_rtol,
+            compress_bcif=compress_bcif,
+        )
+    except Exception as e:
+        print(f"Error converting {file} to {output_file}: {e}")
 
 
 def dir_main():
