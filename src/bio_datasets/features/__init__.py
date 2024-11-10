@@ -7,6 +7,8 @@ __all__ = [
     "Features",
 ]
 
+from datasets.features import *
+
 from .atom_array import (
     AtomArrayFeature,
     ProteinAtomArrayFeature,
