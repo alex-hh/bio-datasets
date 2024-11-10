@@ -15,17 +15,11 @@ if bio_config.FOLDCOMP_AVAILABLE:
 
 from biotite import structure as bs
 from biotite.file import InvalidFileError
-from biotite.structure.filter import (
-    filter_first_altloc,
-    filter_highest_occupancy_altloc,
-)
+from biotite.structure.atoms import repeat
 from biotite.structure.io import pdbx
 from biotite.structure.io.pdb import PDBFile
 from biotite.structure.io.pdbx.convert import (
-    _apply_transformations,
-    _filter_model,
     _get_block,
-    _get_model_starts,
     _get_transformations,
     _parse_operation_expression,
 )
@@ -69,19 +63,19 @@ def fill_missing_polymer_chain_residues(
         "altloc_id", np.full(len(missing_atoms), ".").astype("str")
     )
     missing_atoms.set_annotation(
-        "auth_chain_id",
+        "auth_asym_id",
         np.full(len(missing_atoms), chain_id).astype("str"),
     )
     missing_atoms.set_annotation(
-        "auth_res_id", np.full(len(missing_atoms), -1).astype(int)
+        "auth_seq_id", np.full(len(missing_atoms), -1).astype(int)
     )
     if "occupancy" in chain_atoms._annot:
         raise NotImplementedError("occupancy not supported yet")
     complete_atoms = chain_atoms + missing_atoms
     annots_to_concat = [
         "altloc_id",
-        "auth_chain_id",
-        "auth_res_id",
+        "auth_asym_id",
+        "auth_seq_id",
     ]
     for annot in annots_to_concat:
         complete_atoms.set_annotation(
@@ -133,7 +127,10 @@ def fill_missing_polymer_residues(
         if not poly_seq_entity_mask.any():
             for chain_id in entity_chain_ids.split(","):
                 processed_chain_atoms.append(
-                    structure[structure.auth_chain_id == chain_id]
+                    structure[
+                        (structure.label_entity_id == entity_id)
+                        & (structure.auth_asym_id == chain_id)
+                    ]
                 )
         else:
             complete_res_ids = entity_poly_seq["num"].as_array(int, -1)[
@@ -146,8 +143,8 @@ def fill_missing_polymer_residues(
 
             for chain_id in entity_chain_ids.split(","):
                 chain_atoms = structure[
-                    (structure.auth_chain_id == chain_id)
-                    & (structure.entity_id == entity_id)
+                    (structure.auth_asym_id == chain_id)
+                    & (structure.label_entity_id == entity_id)
                 ]
                 complete_atoms = fill_missing_polymer_chain_residues(
                     chain_atoms,
@@ -157,7 +154,8 @@ def fill_missing_polymer_residues(
                     chain_id,
                 )
                 complete_atoms.set_annotation(
-                    "entity_id", np.full(len(complete_atoms), entity_id).astype(int)
+                    "label_entity_id",
+                    np.full(len(complete_atoms), entity_id).astype(int),
                 )
 
                 processed_chain_atoms.append(complete_atoms)
@@ -208,9 +206,12 @@ def get_pdbx_structure(
     TODO: support use_author_fields. But n.b. fill_missing_polymer_chain_residues relies
     on atoms.res_id matching the canonical `label_seq_id` res_id.
     """
-    extra_fields = extra_fields or (["occupancy"] if altloc == "occupancy" else [])
-    if "occupancy" not in extra_fields and altloc == "occupancy":
-        extra_fields.append("occupancy")
+    # there are also auth_comp_id, auth_atom_id for res_name, atom_name, but these seem a bit unnecessary.
+    extra_fields += [
+        f
+        for f in ["auth_asym_id", "auth_seq_id", "label_entity_id"]
+        if f not in extra_fields
+    ]
     structure = pdbx.get_structure(
         pdbx_file,
         data_block=data_block,
@@ -218,39 +219,16 @@ def get_pdbx_structure(
         extra_fields=extra_fields,
         use_author_fields=False,
         include_bonds=include_bonds,
-        altloc="all",  # handle later so that atom site lines up
+        altloc=altloc,
     )
-    # auth_chain_id -> chain_id mapping from atom_site
     block = _get_block(pdbx_file, data_block)
-    atom_site = block["atom_site"]
-    models = atom_site["pdbx_PDB_model_num"].as_array(np.int32)
-    model_starts = _get_model_starts(models)
-    atom_site = _filter_model(atom_site, model_starts, model)
-    structure.set_annotation("auth_chain_id", atom_site["auth_asym_id"].as_array(str))
-    structure.set_annotation("auth_res_id", atom_site["auth_seq_id"].as_array(int, -1))
-    structure.set_annotation(
-        "entity_id", atom_site["label_entity_id"].as_array(int, -1)
-    )
 
     if not fill_missing_residues:
         filled_structure = structure
     else:
         filled_structure = _fill_missing_residues(structure, block)
 
-    if altloc == "occupancy":
-        return filled_structure[
-            filter_highest_occupancy_altloc(
-                filled_structure, filled_structure.altloc_id
-            )
-        ]
-    elif altloc == "first":
-        return filled_structure[
-            filter_first_altloc(filled_structure, filled_structure.altloc_id)
-        ]
-    elif altloc == "all":
-        return filled_structure
-    else:
-        raise ValueError(f"'{altloc}' is not a valid 'altloc' option")
+    return filled_structure
 
 
 def _load_cif_structure(
@@ -417,6 +395,44 @@ def load_structure(
         raise ValueError(f"Unsupported file format: {file_type}")
 
 
+def _apply_transformations(structure, transformation_dict, operations):
+    """
+    Get subassembly by applying the given operations to the input
+    structure containing affected asym IDs.
+    """
+    # Additional first dimesion for 'structure.repeat()'
+    assembly_coord = np.zeros((len(operations),) + structure.coord.shape)
+    assembly_chain_ids = []
+    # Apply corresponding transformation for each copy in the assembly
+    for i, operation in enumerate(operations):
+        coord = structure.coord
+        # Execute for each transformation step
+        # in the operation expression
+        for op_step in operation:
+            rotation_matrix, translation_vector = transformation_dict[op_step]
+            # Rotate
+            coord = matrix_rotate(coord, rotation_matrix)
+            # Translate
+            coord += translation_vector
+
+        chain_id = structure.chain_id
+        if (coord == structure.coord).all():
+            # null operation should not change the chain ID
+            assembly_chain_ids.append(chain_id.copy())
+        else:
+            operation_str = "-".join(list(operation))
+            assembly_chain_ids.append(
+                np.char.add(
+                    chain_id, np.array(["-" + operation_str]).astype(chain_id.dtype)
+                )
+            )
+        assembly_coord[i] = coord
+
+    assembly = repeat(structure, assembly_coord)
+    assembly.chain_id = np.concatenate(assembly_chain_ids)
+    return assembly
+
+
 def get_assembly_with_missing_residues(  # noqa: CCR001
     pdbx_file,
     data_block=None,
@@ -425,6 +441,7 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
     altloc="first",
     extra_fields=None,
     include_bonds=False,
+    fill_missing_residues=False,
 ):
     """Modified from biotite.structure.io.pdbx.get_assembly to fill in missing residues.
 
@@ -468,6 +485,7 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
         altloc=altloc,
         extra_fields=extra_fields_and_asym,
         include_bonds=include_bonds,
+        fill_missing_residues=fill_missing_residues,
     )
 
     ### Get transformations and apply them to the affected asym IDs
@@ -515,8 +533,28 @@ def load_assembly(
 
     TODO: add support for pdb files.
     """
+    if isinstance(fpath_or_handler, (str, PathLike)) and fpath_or_handler.endswith(
+        ".gz"
+    ):
+        file_type = (
+            file_type or os.path.splitext(os.path.splitext(fpath_or_handler)[0])[1][1:]
+        )
+        # https://github.com/biotite-dev/biotite/issues/193
+        with gzip.open(fpath_or_handler, "rt") as f:
+            return load_assembly(
+                f,
+                file_type=file_type,
+                model=model,
+                extra_fields=extra_fields,
+                fill_missing_residues=fill_missing_residues,
+                include_bonds=include_bonds,
+            )
+
     if file_type in ["cif", "bcif"]:
-        cf = pdbx.CIFFile.read(fpath_or_handler)
+        if file_type == "cif":
+            cf = pdbx.CIFFile.read(fpath_or_handler)
+        else:
+            cf = pdbx.BinaryCIFFile.read(fpath_or_handler)
         return get_assembly_with_missing_residues(
             cf,
             data_block=None,
