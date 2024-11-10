@@ -46,7 +46,6 @@ This makes it easy to share datasets in efficient storage formats, while allowin
 To illustrate, we provide examples of datasets pre-configured with Bio Datasets Feature types that can be downloaded from the hub.
 
 ```python
-import foldcomp
 from bio_datasets import load_dataset
 
 dataset = load_dataset(
