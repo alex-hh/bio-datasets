@@ -195,6 +195,7 @@ class Biomolecule(Generic[T]):
             "res_index",
             np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1,
         )
+        return atoms
 
     @staticmethod
     def standardise_atoms(
@@ -536,9 +537,17 @@ class BaseBiomoleculeComplex(Biomolecule):
     def __init__(self, chains: List[BiomoleculeChain]):
         self._chain_ids = [mol.chain_id for mol in chains]
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
+        self.residue_dictionary = (
+            None  # residue dictionary can be different for different chains
+        )
+        self._standardised = True
 
     def __str__(self):
         return str(self._chains_lookup)
+
+    @staticmethod
+    def default_residue_dictionary():
+        return ResidueDictionary.from_ccd_dict()
 
     @classmethod
     def from_atoms(
@@ -548,9 +557,11 @@ class BaseBiomoleculeComplex(Biomolecule):
         **kwargs,
     ) -> "BaseBiomoleculeComplex":
         # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        atoms = Biomolecule.filter_atoms(atoms, residue_dictionary, **kwargs)
         chain_ids = sorted(np.unique(atoms.chain_id))
+        assert len(chain_ids) > 0, "No chains found"
         if residue_dictionary is None:
-            residue_dictionary = ResidueDictionary.from_ccd_dict()
+            residue_dictionary = cls.default_residue_dictionary()
         return cls(
             [
                 BiomoleculeChain(

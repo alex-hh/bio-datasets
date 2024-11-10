@@ -277,13 +277,10 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
 class ProteinComplex(ProteinMixin, BaseBiomoleculeComplex):
     """A protein complex."""
 
-    @classmethod
-    def from_atoms(cls, atoms: bs.AtomArray, **kwargs) -> "ProteinComplex":
-        # basically ensures that chains are in alphabetical order and all constituents are single-chain.
-        chain_ids = sorted(np.unique(atoms.chain_id))
-        return cls(
-            [
-                ProteinChain(atoms[atoms.chain_id == chain_id], **kwargs)
-                for chain_id in chain_ids
-            ]
-        )
+    def __init__(self, chains: List[ProteinChain]):
+        super().__init__(chains)
+        self.residue_dictionary = chains[0].residue_dictionary
+
+    @staticmethod
+    def default_residue_dictionary():
+        return ProteinDictionary.from_preset("protein", keep_oxt=False)

@@ -67,22 +67,37 @@ def fill_missing_polymer_chain_residues(
         "auth_asym_id",
         np.full(len(missing_atoms), chain_id).astype("str"),
     )
+    for chain_level_annot in ["label_asym_id", "label_entity_id"]:
+        if chain_level_annot in chain_atoms._annot:
+            annot_array = chain_atoms._annot[chain_level_annot]
+            first_val = annot_array[0]
+            assert np.all(annot_array == first_val)
+            missing_atoms.set_annotation(
+                chain_level_annot,
+                np.full(len(missing_atoms), first_val).astype(annot_array.dtype),
+            )
+
     missing_atoms.set_annotation(
         "auth_seq_id", np.full(len(missing_atoms), -1).astype(int)
     )
     if "occupancy" in chain_atoms._annot:
         raise NotImplementedError("occupancy not supported yet")
     complete_atoms = chain_atoms + missing_atoms
-    annots_to_concat = [
-        "altloc_id",
-        "auth_asym_id",
-        "auth_seq_id",
-    ]
-    for annot in annots_to_concat:
-        complete_atoms.set_annotation(
-            annot,
-            np.concatenate([chain_atoms._annot[annot], missing_atoms._annot[annot]]),
-        )
+
+    for annot, chain_annot in chain_atoms._annot.items():
+        if annot not in missing_atoms._annot:
+            # hopefully this is ok...
+            complete_atoms.set_annotation(
+                annot,
+                np.concatenate(
+                    [chain_annot, np.zeros(len(missing_atoms), dtype=chain_annot.dtype)]
+                ),
+            )
+        else:
+            complete_atoms.set_annotation(
+                annot,
+                np.concatenate([chain_annot, missing_atoms._annot[annot]]),
+            )
 
     residue_starts = get_residue_starts(complete_atoms)
 
@@ -129,7 +144,7 @@ def fill_missing_polymer_residues(
             for chain_id in entity_chain_ids.split(","):
                 processed_chain_atoms.append(
                     structure[
-                        (structure.label_entity_id == entity_id)
+                        (structure.label_entity_id == str(entity_id))
                         & (structure.auth_asym_id == chain_id)
                     ]
                 )
@@ -145,7 +160,7 @@ def fill_missing_polymer_residues(
             for chain_id in entity_chain_ids.split(","):
                 chain_atoms = structure[
                     (structure.auth_asym_id == chain_id)
-                    & (structure.label_entity_id == entity_id)
+                    & (structure.label_entity_id == str(entity_id))
                 ]
                 complete_atoms = fill_missing_polymer_chain_residues(
                     chain_atoms,
@@ -174,7 +189,9 @@ def _fill_missing_residues(structure: bs.AtomArray, block):
     nonpoly_entity_mask = ~np.isin(entity_ids, poly_entity_ids)
     nonpoly_entity_ids = entity_ids[nonpoly_entity_mask]
     for entity_id in nonpoly_entity_ids:
-        processed_chain_atoms.append(structure[structure.entity_id == entity_id])
+        processed_chain_atoms.append(
+            structure[structure.label_entity_id == str(entity_id)]
+        )
 
     processed_chain_atoms += fill_missing_polymer_residues(
         structure, entity_poly_seq, poly_entity_ids, poly_chain_ids
