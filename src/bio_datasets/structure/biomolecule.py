@@ -269,6 +269,10 @@ class Biomolecule(Generic[T]):
             ):
                 continue
 
+            if annot_name not in new_atom_array._annot:
+                new_atom_array.set_annotation(
+                    annot_name, np.zeros(len(new_atom_array), annot.dtype)
+                )
             getattr(new_atom_array, annot_name)[
                 existing_atom_indices_in_full_array
             ] = annot.astype(new_atom_array._annot[annot_name].dtype)
