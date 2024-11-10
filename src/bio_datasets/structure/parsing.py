@@ -24,6 +24,7 @@ from biotite.structure.io.pdbx.convert import (
     _parse_operation_expression,
 )
 from biotite.structure.residues import get_residue_starts
+from biotite.structure.util import matrix_rotate
 
 from .residue import (
     ResidueDictionary,
