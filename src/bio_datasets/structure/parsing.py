@@ -225,6 +225,7 @@ def get_pdbx_structure(
     on atoms.res_id matching the canonical `label_seq_id` res_id.
     """
     # there are also auth_comp_id, auth_atom_id for res_name, atom_name, but these seem a bit unnecessary.
+    extra_fields = extra_fields or []
     extra_fields += [
         f
         for f in ["auth_asym_id", "auth_seq_id", "label_entity_id"]
