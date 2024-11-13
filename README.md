@@ -18,7 +18,7 @@ The main formats we support for storing and loading biomolecular structure data 
 
 | Feature name |   Storage format    |  Loaded as  (controlled by `load_as` feature kwarg) |
 | ------------ | --------------------| ------------------------------------------------|
-|  AtomArrayFeature  | arrays of cartesian internal coordinates and annotations | `biotite.structure.AtomArray` (default) / `bio_datasets.BiomoleculeChain` / `bio_datasets.BiomoleculeComplex`  (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
+|  AtomArrayFeature  | arrays of cartesian coordinates and annotations | `biotite.structure.AtomArray` (default) / `bio_datasets.BiomoleculeChain` / `bio_datasets.BiomoleculeComplex`  (`bio_datasets` classes are lightweight wrappers around `AtomArray`)|
 |  StructureFeature   | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF | `biotite.structure.AtomArray` / `bio_datasets.BiomoleculeChain` / `bio_datasets.BiomoleculeComplex` |
 
 We also provide protein-specific versions of these features for protein structure data, supporting protein-specific storage formats (like foldcomp) and loaded python objects:
