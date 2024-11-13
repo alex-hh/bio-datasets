@@ -25,7 +25,7 @@ We also provide protein-specific versions of these features for protein structur
 
 | Feature name | Storage format | Loaded as |
 | ------------ | -------------- | --------- |
-| ProteinAtomArrayFeature | arrays of cartesian or (*experimental*) discretised internal coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (default)|
+| ProteinAtomArrayFeature | arrays of cartesian or (*experimental: discretised internal*) coordinates and annotations | `biotite.structure.AtomArray` / `bio_datasets.ProteinChain` / `bio_datasets.ProteinComplex` (default)|
 | ProteinStructureFeature | compressed byte string encoded file format embedded into parquet columns: PDB / mmCIF / binaryCIF / foldcomp | `biotite.structure.AtomArray` / `bio_datasets.ProteinCahin` / `bio_datasets.ProteinComplex` (default) |
 
 
