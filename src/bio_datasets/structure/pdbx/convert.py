@@ -21,7 +21,7 @@ import numpy as np
 from biotite.file import InvalidFileError
 from biotite.sequence.seqtypes import NucleotideSequence, ProteinSequence
 from biotite.structure.atoms import AtomArray, AtomArrayStack, repeat
-from biotite.structure.bonds import BondList, BondType, connect_via_residue_names
+from biotite.structure.bonds import BondList, connect_via_residue_names
 from biotite.structure.box import unitcell_from_vectors, vectors_from_unitcell
 from biotite.structure.error import BadStructureError
 from biotite.structure.filter import _canonical_aa_list as canonical_aa_list
