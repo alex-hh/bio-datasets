@@ -336,13 +336,7 @@ def _load_foldcomp_structure(
     io_str = io.StringIO(
         pdb_str
     )  # TODO: check how pdbfile handles handler vs open type checking.
-    pdbf = PDBFile.read(io_str)
-    structure = pdbf.get_structure(
-        model=model,
-        extra_fields=extra_fields,
-        include_bonds=include_bonds,
-    )
-    return structure
+    return _load_pdb_structure(io_str)
 
 
 def load_structure(

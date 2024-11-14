@@ -13,7 +13,6 @@ aws s3 cp --recursive --no-sign-request s3://pdbsnapshots/20240101/pub/pdb/data/
 import argparse
 import glob
 import os
-import shutil
 import subprocess
 import tempfile
 
