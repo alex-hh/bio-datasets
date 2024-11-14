@@ -32,14 +32,14 @@ from biotite.structure.filter import (
     filter_first_altloc,
     filter_highest_occupancy_altloc,
 )
-from biotite.structure.io.pdbx.bcif import (
+from .bcif import (
     BinaryCIFBlock,
     BinaryCIFColumn,
     BinaryCIFFile,
 )
-from biotite.structure.io.pdbx.cif import CIFBlock, CIFFile
-from biotite.structure.io.pdbx.component import MaskValue
-from biotite.structure.io.pdbx.encoding import StringArrayEncoding
+from bio_datasets.structure.pdbx.cif import CIFBlock, CIFFile
+from bio_datasets.structure.pdbx.component import MaskValue
+from bio_datasets.structure.pdbx.encoding import StringArrayEncoding
 from biotite.structure.residues import (
     get_residue_count,
     get_residue_positions,

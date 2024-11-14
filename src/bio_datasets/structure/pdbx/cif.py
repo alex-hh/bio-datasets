@@ -17,7 +17,7 @@ from biotite.file import (
     is_open_compatible,
     is_text,
 )
-from biotite.structure.io.pdbx.component import MaskValue, _Component
+from bio_datasets.structure.pdbx.component import MaskValue, _Component
 
 UNICODE_CHAR_SIZE = 4
 

@@ -5,9 +5,9 @@ __author__ = "Patrick Kunzmann"
 import itertools
 import msgpack
 import numpy as np
-import biotite.structure.io.pdbx.bcif as bcif
-from biotite.structure.io.pdbx.bcif import _encode_numpy as encode_numpy
-from biotite.structure.io.pdbx.encoding import (
+import bio_datasets.structure.pdbx.bcif as bcif
+from bio_datasets.structure.pdbx.bcif import _encode_numpy as encode_numpy
+from bio_datasets.structure.pdbx.encoding import (
     ByteArrayEncoding,
     DeltaEncoding,
     FixedPointEncoding,

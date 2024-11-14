@@ -21,7 +21,7 @@ from biotite.structure.io.pdbx.component import (
     _Component,
     _HierarchicalContainer,
 )
-from biotite.structure.io.pdbx.encoding import (
+from bio_datasets.structure.pdbx.encoding import (
     create_uncompressed_encoding,
     decode_stepwise,
     deserialize_encoding,
