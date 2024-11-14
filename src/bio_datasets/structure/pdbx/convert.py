@@ -14,10 +14,10 @@ __all__ = [
     "list_assemblies",
     "get_assembly",
 ]
-
 import itertools
 import warnings
 import numpy as np
+from enum import IntEnum
 from biotite.file import InvalidFileError
 from biotite.sequence.seqtypes import NucleotideSequence, ProteinSequence
 from biotite.structure.atoms import AtomArray, AtomArrayStack, repeat
