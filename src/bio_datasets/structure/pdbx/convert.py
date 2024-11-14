@@ -47,6 +47,32 @@ from biotite.structure.residues import (
 )
 from biotite.structure.util import matrix_rotate
 
+
+class BondType(IntEnum):
+    """
+    This enum type represents the type of a chemical bond.
+
+        - `ANY` - Used if the actual type is unknown
+        - `SINGLE` - Single bond
+        - `DOUBLE` - Double bond
+        - `TRIPLE` - Triple bond
+        - `QUADRUPLE` - A quadruple bond
+        - `AROMATIC_SINGLE` - Aromatic bond with a single formal bond
+        - `AROMATIC_DOUBLE` - Aromatic bond with a double formal bond
+        - `AROMATIC_TRIPLE` - Aromatic bond with a triple formal bond
+        - `COORDINATION` - Coordination complex involving a metal atom
+    """
+    ANY = 0
+    SINGLE = 1
+    DOUBLE = 2
+    TRIPLE = 3
+    QUADRUPLE = 4
+    AROMATIC_SINGLE = 5
+    AROMATIC_DOUBLE = 6
+    AROMATIC_TRIPLE = 7
+    COORDINATION = 8
+
+
 # Bond types in `struct_conn` category that refer to covalent bonds
 PDBX_BOND_TYPE_ID_TO_TYPE = {
     # Although a covalent bond, could in theory have a higher bond order,
