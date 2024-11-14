@@ -146,22 +146,31 @@ def override_features():
 
 override_features()
 
+
 # safe references to datasets objects to avoid import order errors due to monkey patching
 # otherwise just import bio_datasets before importing anything from datasets
-from datasets import Dataset, load_dataset
-from datasets.features import *
-from datasets.packaged_modules import _PACKAGED_DATASETS_MODULES, _hash_python_lines
-from datasets.splits import *
+import datasets
+from datasets import *
 
 from .features import *
-from .packaged_modules.structurefolder import structurefolder
+from .packaged_modules import *
 from .structure import *
 
-_PACKAGED_BIO_MODULES = {
-    "structurefolder": (
-        structurefolder.__name__,
-        _hash_python_lines(inspect.getsource(structurefolder).splitlines()),
-    )
-}
 
-_PACKAGED_DATASETS_MODULES.update(_PACKAGED_BIO_MODULES)
+def load_dataset(*args, use_feature_type: str = "bio", **kwargs):
+    """
+    Load a dataset with custom features. Wrapper around `datasets.load_dataset`.
+
+    Args:
+        use_feature_type:
+            "bio" uses the (possibly bio-specific) features defined in the dataset info,
+            "fallback" uses only features compatible with the standard Datasets library,
+            "none" removes the features types, providing only the raw data.
+    """
+    assert use_feature_type in ["bio", "fallback", "none"]
+    ds = datasets.load_dataset(*args, **kwargs)
+    if use_feature_type == "fallback":
+        ds.info.features = ds.info.features.to_fallback()
+    elif use_feature_type == "none":
+        ds.info.features = None
+    return ds

@@ -165,14 +165,8 @@ class Biomolecule(Generic[T]):
         return new_atoms
 
     @staticmethod
-    def standardise_atoms(
-        atoms,
-        residue_dictionary,
-        verbose: bool = False,
-        backbone_only: bool = False,
-    ):
-        atoms = Biomolecule.reorder_chains(atoms)
-        residue_starts = get_residue_starts(atoms)
+    def set_index_annotations(atoms, residue_dictionary, residue_starts):
+        """Set numeric annotations for discrete categories to help with standardisation."""
         if (
             "atomtype_index" not in atoms._annot
             and residue_dictionary.atom_types is not None
@@ -197,10 +191,23 @@ class Biomolecule(Generic[T]):
             atoms.set_annotation(
                 "restype_index", residue_dictionary.res_name_to_index(atoms.res_name)
             )
-
         atoms.set_annotation(
             "res_index",
             np.cumsum(get_residue_starts_mask(atoms, residue_starts)) - 1,
+        )
+        return atoms
+
+    @staticmethod
+    def standardise_atoms(
+        atoms,
+        residue_dictionary,
+        verbose: bool = False,
+        backbone_only: bool = False,
+    ):
+        atoms = Biomolecule.reorder_chains(atoms)
+        residue_starts = get_residue_starts(atoms)
+        atoms = Biomolecule.set_index_annotations(
+            atoms, residue_dictionary, residue_starts
         )
 
         (
@@ -269,6 +276,10 @@ class Biomolecule(Generic[T]):
             ):
                 continue
 
+            if annot_name not in new_atom_array._annot:
+                new_atom_array.set_annotation(
+                    annot_name, np.zeros(len(new_atom_array), annot.dtype)
+                )
             getattr(new_atom_array, annot_name)[
                 existing_atom_indices_in_full_array
             ] = annot.astype(new_atom_array._annot[annot_name].dtype)
@@ -276,7 +287,6 @@ class Biomolecule(Generic[T]):
         # set_annotation vs setattr: set_annotation adds to annot and verifies size
         new_atom_array.coord[existing_atom_indices_in_full_array] = atoms.coord
         # if we can create a res start index for each atom, we can assign the value based on that...
-
         assert (
             np.unique(new_atom_array.res_index) == np.unique(atoms.res_index)
         ).all(), "We need this to agree to use residue indexing for filling annotations"
@@ -527,9 +537,17 @@ class BaseBiomoleculeComplex(Biomolecule):
     def __init__(self, chains: List[BiomoleculeChain]):
         self._chain_ids = [mol.chain_id for mol in chains]
         self._chains_lookup = {mol.chain_id: mol for mol in chains}
+        self.residue_dictionary = (
+            None  # residue dictionary can be different for different chains
+        )
+        self._standardised = True
 
     def __str__(self):
         return str(self._chains_lookup)
+
+    @staticmethod
+    def default_residue_dictionary():
+        return ResidueDictionary.from_ccd_dict()
 
     @classmethod
     def from_atoms(
@@ -539,9 +557,11 @@ class BaseBiomoleculeComplex(Biomolecule):
         **kwargs,
     ) -> "BaseBiomoleculeComplex":
         # basically ensures that chains are in alphabetical order and all constituents are single-chain.
+        atoms = Biomolecule.filter_atoms(atoms, residue_dictionary, **kwargs)
         chain_ids = sorted(np.unique(atoms.chain_id))
+        assert len(chain_ids) > 0, "No chains found"
         if residue_dictionary is None:
-            residue_dictionary = ResidueDictionary.from_ccd_dict()
+            residue_dictionary = cls.default_residue_dictionary()
         return cls(
             [
                 BiomoleculeChain(

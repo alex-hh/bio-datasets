@@ -1,3 +1,4 @@
+# flake8: noqa: F403, F401
 __all__ = [
     "AtomArrayFeature",
     "StructureFeature",
@@ -6,6 +7,8 @@ __all__ = [
     "CustomFeature",
     "Features",
 ]
+
+from datasets.features import *
 
 from .atom_array import (
     AtomArrayFeature,
