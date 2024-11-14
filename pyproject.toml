@@ -1,4 +1,4 @@
-[tool.poetry]
+[project]
 name = "datasets-bio"
 version = "0.1.2"
 description = "Fast, convenient and shareable datasets for BioML"
