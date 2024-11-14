@@ -45,15 +45,32 @@ This makes it easy to share datasets in efficient storage formats, while allowin
 
 To illustrate, we provide examples of datasets pre-configured with Bio Datasets Feature types that can be downloaded from the hub.
 
+#### Generic biomolecular structure data
+
 ```python
-import foldcomp
+from bio_datasets import load_dataset
+
+dataset = load_dataset(
+    "biodatasets/pdb",
+    split="train",
+)
+ex = dataset[0]
+print(type(ex["structure"]))  # a dict with keys `id` and `structure` (a `biotite.structure.AtomArray`)
+```
+```
+biotite.structure.AtomArray
+```
+
+#### Protein structure data (e.g. from afdb)
+
+```python
 from bio_datasets import load_dataset
 
 dataset = load_dataset(
     "biodatasets/afdb_e_coli",
     split="train",
 )
-ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure.AtomArray` wrapped in a `bio_datasets.Protein` object for standardisation.)
+ex = dataset[0]  # a dict with keys `name` and `structure` (a `biotite.structure.AtomArray` wrapped in a `bio_datasets.ProteinChain` object for standardisation.)
 print(type(ex["structure"]))
 ```
 ```
@@ -70,7 +87,7 @@ print(dataset.info.features)
 ```
 ```
 {'name': Value(dtype='string', id=None),
- 'structure': ProteinStructureFeature(requires_encoding=True, requires_decoding=True, decode=True, id=None, with_occupancy=False, with_b_factor=True, with_atom_id=False, with_charge=False, encode_with_foldcomp=False)}
+ 'structure': ProteinStructureFeature(requires_encoding=True, requires_decoding=True, decode=True, load_as='chain', constructor_kwargs=None, load_assembly=False, fill_missing_residues=False, include_bonds=False, with_occupancy=False, with_b_factor=True, with_atom_id=False, with_charge=False, encode_with_foldcomp=False, compression=None)}
 ```
 
 To summarise: this dataset contains two features: 'name', which is a string, and 'structure' which is a `bio_datasets.ProteinStructureFeature`. Features of this type will automatically be loaded as `bio_datasets.Protein` instances when the Bio Datasets library is installed; and as dictionaries containing the fields `path`, `bytes` (the file contents) and `type` (the file format e.g. 'pdb', 'cif', etc.) fields when loaded with `datasets.load_dataset` by a user who does not have Bio Datasets installed.

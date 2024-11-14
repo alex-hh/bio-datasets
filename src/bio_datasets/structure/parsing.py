@@ -1,3 +1,4 @@
+import io
 import gzip
 import os
 from os import PathLike
@@ -328,12 +329,15 @@ def _load_foldcomp_structure(
     if is_open_compatible(fpath_or_handler):
         with open(fpath_or_handler, "rb") as fcz:
             fcz_binary = fcz.read()
+    elif isinstance(fpath_or_handler, io.BytesIO):
+        fcz_binary = fpath_or_handler.read()
     else:
-        raise ValueError("Unsupported file type: expected path or bytes handler")
+        raise ValueError(
+            f"Unsupported file type: expected path or bytes handler: {type(fpath_or_handler)}"
+        )
     (_, pdb_str) = foldcomp.decompress(fcz_binary)
-    lines = pdb_str.splitlines()
-    pdbf = PDBFile()
-    pdbf.lines = lines
+    io_str = io.StringIO(pdb_str)  # TODO: check how pdbfile handles handler vs open type checking.
+    pdbf = PDBFile.read(io_str)
     structure = pdbf.get_structure(
         model=model,
         extra_fields=extra_fields,

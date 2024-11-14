@@ -11,8 +11,7 @@ import foldcomp
 
 from bio_datasets import Dataset, Features, NamedSplit, Value
 from bio_datasets.features import ProteinAtomArrayFeature, ProteinStructureFeature
-from bio_datasets.features.atom_array import load_structure
-from bio_datasets.structure import ProteinChain
+from bio_datasets.structure.parsing import load_structure
 
 
 def examples_generator(
@@ -58,7 +57,7 @@ def main(
             "afdb", backbone_only=backbone_only
         )
         if as_array
-        else ProteinStructureFeature(with_b_factor=True),
+        else ProteinStructureFeature(with_b_factor=True, load_as="chain"),
     )
     import tempfile
 

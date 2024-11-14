@@ -1060,6 +1060,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 all_atoms_present=True,
                 with_element=False,
                 with_hetero=False,
+                load_as="chain",
                 **kwargs,
             )
         elif preset == "pdb":
