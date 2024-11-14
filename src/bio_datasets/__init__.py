@@ -1,6 +1,5 @@
 # flake8: noqa: E402, F401
 import importlib
-import inspect
 import json
 import logging
 from pathlib import Path

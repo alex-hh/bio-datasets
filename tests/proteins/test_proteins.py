@@ -4,7 +4,7 @@ from biotite.structure.io.pdbx import CIFFile, get_structure
 from biotite.structure.residues import residue_iter
 
 from bio_datasets.structure.parsing import load_structure
-from bio_datasets.structure.protein import ProteinChain
+from bio_datasets.structure.protein import ProteinChain, ProteinDictionary
 from bio_datasets.structure.protein import constants as protein_constants
 
 expected_residue_atoms = {
@@ -140,7 +140,9 @@ def test_fill_missing_atoms(pdb_atoms_top7):
     """
     pdb_atom_array = pdb_atoms_top7[filter_amino_acids(pdb_atoms_top7)]
     # 1qys has missing atoms
-    protein = ProteinChain(pdb_atom_array)
+    protein = ProteinChain(
+        pdb_atom_array, residue_dictionary=ProteinDictionary.from_preset("protein")
+    )
     # todo check for nans
     for raw_residue, filled_residue in zip(
         residue_iter(pdb_atom_array[filter_amino_acids(pdb_atom_array)]),
