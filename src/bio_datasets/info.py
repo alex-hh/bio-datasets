@@ -2,7 +2,7 @@ import copy
 import dataclasses
 import json
 from dataclasses import asdict, dataclass
-from typing import ClassVar, Dict, List, Optional
+from typing import ClassVar, Dict, List
 
 from datasets.info import DatasetInfo
 from datasets.splits import SplitDict
@@ -21,35 +21,20 @@ class DatasetInfo(DatasetInfo):
     but during serialisation, features needs to be fallback features (compatible with standard Datasets lib).
     """
 
-    bio_features: Optional[Features] = None
-
     _INCLUDED_INFO_IN_YAML: ClassVar[List[str]] = [
         "config_name",
         "download_size",
         "dataset_size",
         "features",
-        "bio_features",
         "splits",
     ]
 
-    def __post_init__(self):
-        super().__post_init__()
-        if self.bio_features is None and self.features is not None:
-            self.bio_features = self.features
-        if self.bio_features is not None and not isinstance(
-            self.bio_features, Features
-        ):
-            self.bio_features = Features.from_dict(self.bio_features)
-        if self.bio_features is not None:
-            self.features = self.bio_features
-
     def _to_yaml_dict(self) -> dict:
         # sometimes features are None
-        if self.bio_features is not None:
-            self.features = self.bio_features.to_fallback()
+        datasets_features = self.features.to_fallback()
         ret = super()._to_yaml_dict()
-        if self.bio_features is not None:
-            self.features = self.bio_features
+        ret["bio_features"] = ret["features"]
+        ret["features"] = datasets_features._to_yaml_list()
         return ret
 
     @classmethod
@@ -73,10 +58,8 @@ class DatasetInfo(DatasetInfo):
     def _from_yaml_dict(cls, yaml_data: dict) -> "DatasetInfo":
         yaml_data = copy.deepcopy(yaml_data)
         if yaml_data.get("bio_features") is not None:
-            yaml_data["bio_features"] = Features._from_yaml_list(
-                yaml_data["bio_features"]
-            )
-        if yaml_data.get("features") is not None:
+            yaml_data["features"] = Features._from_yaml_list(yaml_data["bio_features"])
+        elif yaml_data.get("features") is not None:
             yaml_data["features"] = Features._from_yaml_list(yaml_data["features"])
         if yaml_data.get("splits") is not None:
             yaml_data["splits"] = SplitDict._from_yaml_list(yaml_data["splits"])
