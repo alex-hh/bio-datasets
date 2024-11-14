@@ -249,20 +249,14 @@ class ProteinChain(ProteinMixin, BiomoleculeChain):
     def __init__(
         self,
         atoms: bs.AtomArray,
-        residue_dictionary: Optional[ResidueDictionary] = None,
+        residue_dictionary: ResidueDictionary,
         verbose: bool = False,
         backbone_only: bool = False,
         keep_hydrogens: bool = False,
-        keep_oxt: bool = False,
         replace_unexpected_with_unknown: bool = False,
         raise_error_on_unexpected: bool = False,
     ):
-        if residue_dictionary is None:
-            residue_dictionary = ProteinDictionary.from_preset(
-                "protein", keep_oxt=keep_oxt
-            )
-        else:
-            assert keep_oxt == getattr(residue_dictionary, "keep_oxt", False)
+        assert residue_dictionary is not None
         super().__init__(
             atoms,
             residue_dictionary=residue_dictionary,

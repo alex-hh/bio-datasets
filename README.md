@@ -155,8 +155,10 @@ that supports blazingly fast iteration over fully featurised samples.
 Let's convert the `bio_datasets.StructureFeature` data to the `bio_datasets.AtomArrayFeature` type, and compare iteration speed:
 
 
+<!-- TODO: same for bcif pdb (and others) -->
 ```python
-from bio_datasets import Features, Value, load_dataset AtomArrayFeature
+import timeit
+from bio_datasets import Features, Value, AtomArrayFeature, load_dataset
 
 dataset = load_dataset(
     "biodatasets/afdb_e_coli",
