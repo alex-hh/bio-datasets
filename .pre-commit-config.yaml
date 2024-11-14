@@ -5,29 +5,29 @@ repos:
       - id: isort
         args: ["--profile", "black"]
         types: [python]
-        exclude: '^data'
+        exclude: '^data|^src/bio_datasets/structure/pdbx'
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
     hooks:
       - id: black
         types: [python]
-        exclude: '^data|.*\.pdb$|.*\.cif|.*\.bcif'
+        exclude: '^data|.*\.pdb$|.*\.cif|.*\.bcif|^src/bio_datasets/structure/pdbx'
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
       - id: check-yaml
-        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library'
+        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library|^src/bio_datasets/structure/pdbx'
       - id: end-of-file-fixer
-        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library'
+        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library|^src/bio_datasets/structure/pdbx'
       - id: trailing-whitespace
-        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library'
+        exclude: '^data|.*\.pdb$|.*\.cif$|.*\.bcif|^src/bio_datasets/structure/protein/library|^src/bio_datasets/structure/pdbx'
         # exclude: '^data|^scripts/gvp'
   - repo: https://github.com/pycqa/flake8
     rev: 6.0.0  # Use the latest stable version
     hooks:
       - id: flake8
-        exclude: '^examples'
+        exclude: '^examples|^src/bio_datasets/structure/pdbx'
         name: "Linter"
         types: [python]
         args:
