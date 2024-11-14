@@ -2,9 +2,7 @@
 name = "datasets-bio"
 version = "0.1.2"
 description = "Fast, convenient and shareable datasets for BioML"
-authors = [
-    "Alex Hawkins-Hooker",
-]
+authors = [{ name = "Alex Hawkins-Hooker" }]
 requires-python = ">=3.7"
 packages = [
     { include = "bio_datasets", from = "src" },
