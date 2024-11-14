@@ -158,7 +158,7 @@ Let's convert the `bio_datasets.StructureFeature` data to the `bio_datasets.Atom
 <!-- TODO: same for bcif pdb (and others) -->
 ```python
 import timeit
-from bio_datasets import Features, Value, AtomArrayFeature, load_dataset
+from bio_datasets import AtomArrayFeature, Features, Value, load_dataset
 
 dataset = load_dataset(
     "biodatasets/afdb_e_coli",
