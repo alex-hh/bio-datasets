@@ -31,6 +31,7 @@ from bio_datasets.structure import (
     BiomoleculeChain,
     BiomoleculeComplex,
     parsing,
+    pdbx,
 )
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
@@ -109,13 +110,11 @@ def protein_atom_array_from_dict(
         raise ValueError("No coordinates found")
 
 
-def encode_biotite_atom_array(
+def _pdb_encode_biotite_atom_array(
     array: bs.AtomArray, encode_with_foldcomp: bool = False, name: Optional[str] = None
-) -> str:
+) -> bytes:
     """
-    Encode a biotite AtomArray to pdb string bytes.
-
-    TODO: support foldcomp encoding
+    Encode a biotite AtomArray to pdb string bytes, optionally compressing with foldcomp.
     """
     pdbf = PDBFile()
     pdbf.set_structure(array)
@@ -128,6 +127,32 @@ def encode_biotite_atom_array(
         return foldcomp.compress(name, contents)
     else:
         return contents.encode()
+
+
+def encode_biotite_atom_array(
+    array: bs.AtomArray,
+    encode_with_foldcomp: bool = False,
+    name: Optional[str] = None,  # just for foldcomp
+    file_type: str = "pdb",
+) -> bytes:
+    """Encode a biotite AtomArray to file_type (pdb/cif/bcif) -formatted bytes, optionally compressing with foldcomp."""
+    if file_type == "pdb":
+        return _pdb_encode_biotite_atom_array(array, encode_with_foldcomp, name)
+    elif file_type == "cif":
+        cf = pdbx.CIFFile()
+        pdbx.set_structure(cf, array)
+        string_io = StringIO()
+        cf.write(string_io)
+        return string_io.getvalue().encode()
+    elif file_type == "bcif":
+        cf = pdbx.BinaryCIFFile()
+        pdbx.set_structure(cf, array)
+        bytes_io = BytesIO()
+        cf = pdbx.compress(cf)
+        cf.write(bytes_io)
+        return bytes_io.getvalue()
+    else:
+        raise ValueError(f"Unsupported file type: {file_type}")
 
 
 def load_structure_from_file_dict(
@@ -761,6 +786,9 @@ class StructureFeature(CustomFeature):
         return extra_fields
 
     def _encode_dict(self, value: dict) -> dict:
+        if "atoms" in value:
+            preferred_type = value.get("type", "pdb")
+            return self._encode_example(value["atoms"], preferred_type)
         if value.get("path") is not None and os.path.isfile(value["path"]):
             path = value["path"]
             file_type = value.get("type") or file_type_from_path(path)
@@ -793,7 +821,9 @@ class StructureFeature(CustomFeature):
                 f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
             )
 
-    def _encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
+    def _encode_example(
+        self, value: Union[str, bytes, bs.AtomArray], _preferred_type="pdb"
+    ) -> dict:
         """Encode example into a format for Arrow.
 
         Similar to the built-in Image/Audio features, we allow for file contents to be written
@@ -817,6 +847,7 @@ class StructureFeature(CustomFeature):
                 "bytes": encode_biotite_atom_array(
                     value,
                     encode_with_foldcomp=self.encode_with_foldcomp,
+                    file_type=_preferred_type,
                 ),
                 "type": "pdb" if not self.encode_with_foldcomp else "fcz",
             }
