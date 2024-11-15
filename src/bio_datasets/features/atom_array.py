@@ -1055,27 +1055,29 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     def from_preset(cls, preset: str, **kwargs):
         if preset == "afdb":
             residue_dictionary = ProteinDictionary.from_preset("protein")
-            return cls(
-                residue_dictionary=residue_dictionary,
-                with_b_factor=True,
-                b_factor_is_plddt=True,
+            kws = {
+                "residue_dictionary": residue_dictionary,
+                "with_b_factor": True,
+                "b_factor_is_plddt": True,
                 # b_factor_dtype="uint8"
-                b_factor_dtype="float16",
-                coords_dtype="float16",
-                all_atoms_present=True,
-                with_element=False,
-                with_hetero=False,
-                load_as="chain",
-                **kwargs,
-            )
+                "b_factor_dtype": "float16",
+                "coords_dtype": "float16",
+                "all_atoms_present": True,
+                "with_element": False,
+                "with_hetero": False,
+                "load_as": "chain",
+            }
+            kws.update(kwargs)
+            return cls(**kws)
         elif preset == "pdb":
             residue_dictionary = ProteinDictionary.from_preset("protein")
-            return cls(
-                residue_dictionary=residue_dictionary,
-                with_b_factor=False,
-                coords_dtype="float16",
-                **kwargs,
-            )
+            kws = {
+                "residue_dictionary": residue_dictionary,
+                "with_b_factor": False,
+                "coords_dtype": "float16",
+            }
+            kws.update(kwargs)
+            return cls(**kws)
         else:
             raise ValueError(f"Unknown preset: {preset}")
 
