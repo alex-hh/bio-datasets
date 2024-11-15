@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 import requests
-from biotite.structure.io.pdbx import *
+
+from bio_datasets.structure.pdbx import *
 
 OUTPUT_CCD = (
     Path(__file__).parent

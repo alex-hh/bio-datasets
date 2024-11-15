@@ -1,6 +1,16 @@
 # flake8: noqa: E402, F401
+import os
+from pathlib import Path
+
+# Change cache location - n.b. this will also affect the datasets cache in same session
+# this prevents issues with pre-cached datasets downloaded with datasets instead of bio_datasets
+DEFAULT_XDG_CACHE_HOME = "~/.cache"
+XDG_CACHE_HOME = os.getenv("XDG_CACHE_HOME", DEFAULT_XDG_CACHE_HOME)
+DEFAULT_HF_CACHE_HOME = os.path.join(XDG_CACHE_HOME, "huggingface")
+HF_CACHE_HOME = os.path.expanduser(os.getenv("HF_HOME", DEFAULT_HF_CACHE_HOME))
+os.environ["HF_DATASETS_CACHE"] = os.path.join(HF_CACHE_HOME, "bio_datasets")
+
 import importlib
-import inspect
 import json
 import logging
 from pathlib import Path

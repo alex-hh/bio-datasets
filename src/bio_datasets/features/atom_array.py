@@ -966,15 +966,20 @@ class ProteinStructureFeature(StructureFeature):
 
     load_as: str = "complex"  # biomolecule or chain or complex or biotite; if chain must be monomer
     _type: str = field(default="ProteinStructureFeature", init=False, repr=False)
+    residue_dictionary: Optional[Union[ResidueDictionary, Dict]] = None
 
     def __post_init__(self):
         # residue_dictionary will be set to default if not provided in constructor_kwargs
-        if "residue_dictionary" not in (
-            self.constructor_kwargs or {}
-        ) and self.load_as in ["chain", "complex"]:
+        if self.residue_dictionary is None and self.load_as in ["chain", "complex"]:
+            self.residue_dictionary = ProteinDictionary.from_preset("protein")
             logger.info(
                 "No residue_dictionary provided for ProteinStructureFeature, default ProteinDictionary will be used to decode."
             )
+        self.deserialize()
+
+    def deserialize(self):
+        if isinstance(self.residue_dictionary, dict):
+            self.residue_dictionary = ProteinDictionary(**self.residue_dictionary)
 
     def encode_example(self, value: Union[ProteinMixin, dict, bs.AtomArray]) -> dict:
         if isinstance(value, bs.AtomArray):
@@ -995,9 +1000,13 @@ class ProteinStructureFeature(StructureFeature):
                 "Returning biomolecule for protein-specific feature not supported."
             )
         elif self.load_as == "chain":
-            return ProteinChain(atoms, **constructor_kwargs)
+            return ProteinChain(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
         elif self.load_as == "complex":
-            return ProteinComplex.from_atoms(atoms, **constructor_kwargs)
+            return ProteinComplex.from_atoms(
+                atoms, residue_dictionary=self.residue_dictionary, **constructor_kwargs
+            )
         else:
             raise ValueError(f"Unsupported load_as: {self.load_as}")
 
@@ -1041,10 +1050,6 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
     def deserialize(self):
         if isinstance(self.residue_dictionary, dict):
             self.residue_dictionary = ProteinDictionary(**self.residue_dictionary)
-        elif self.all_atoms_present:
-            assert isinstance(
-                self.residue_dictionary, ProteinDictionary
-            ), "residue_dictionary must be a ProteinDictionary"
 
     @classmethod
     def from_preset(cls, preset: str, **kwargs):
@@ -1060,6 +1065,7 @@ class ProteinAtomArrayFeature(AtomArrayFeature):
                 all_atoms_present=True,
                 with_element=False,
                 with_hetero=False,
+                load_as="chain",
                 **kwargs,
             )
         elif preset == "pdb":
