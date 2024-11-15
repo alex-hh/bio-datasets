@@ -616,7 +616,7 @@ def _create_complete_atom_array_from_restype_index(
         chain_atom_arrays.append(atom_array)
         chain_residue_starts.append(residue_starts + residue_starts_offset)
         residue_starts_offset += len(atom_array)
-        res_index_offset += atom_array.res_index.max() + 1
+        res_index_offset = atom_array.res_index.max() + 1
 
     concatenated_array = sum(chain_atom_arrays, bs.AtomArray(length=0))
     for key in atom_array._annot.keys():
@@ -645,7 +645,6 @@ def create_single_chain_atom_array_from_restype_index(
     Populate annotations from restype_index, assuming all atoms are present.
     """
     assert isinstance(chain_id, str)
-
     if backbone_only:
         residue_sizes = [len(residue_dictionary.backbone_atoms)] * len(restype_index)
     else:

@@ -508,8 +508,8 @@ class AtomArrayFeature(CustomFeature):
                 len(chain_ids) == 1
             ), "Only single chain supported when `load_as` == 'chain'"
         residue_starts = get_residue_starts(value)
-        if len(residue_starts) > 65535:
-            raise ValueError("AtomArray too large to fit in uint16 (residue starts)")
+        if residue_starts.max() > 2**32 - 1 and not self.all_atoms_present:
+            raise ValueError("AtomArray too large to fit in uint32 (residue starts)")
         return self._build_atom_array_struct(value, residue_starts)
 
     def _build_atom_array_struct(

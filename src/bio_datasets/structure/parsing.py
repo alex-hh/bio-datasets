@@ -436,8 +436,6 @@ def _apply_transformations(
             # Translate
             coord += translation_vector
 
-        chain_id = structure.chain_id
-
         assembly_transform_ids.append(
             np.full(len(structure), "-".join(list(operation)))
         )
@@ -520,7 +518,10 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
             # Filter affected asym IDs
             sub_structure = structure[..., np.isin(structure.label_asym_id, asym_ids)]
             sub_assembly = _apply_transformations(
-                sub_structure, transformations, operations
+                sub_structure,
+                transformations,
+                operations,
+                include_sym_id=True,
             )
             # Merge the chains with asym IDs for this operation
             # with chains from other operations
