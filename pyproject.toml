@@ -1,5 +1,5 @@
 [project]
-name = "bio_datasets"
+name = "datasets-bio"
 version = "0.1.2"
 description = "Fast, convenient and shareable datasets for BioML"
 authors = [{ name = "Alex Hawkins-Hooker" }]
