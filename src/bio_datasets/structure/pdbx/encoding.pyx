@@ -23,7 +23,7 @@ from enum import IntEnum
 import re
 import numpy as np
 from .component import _Component
-from ....file import InvalidFileError
+from biotite.file import InvalidFileError
 
 ctypedef np.int8_t int8
 ctypedef np.int16_t int16

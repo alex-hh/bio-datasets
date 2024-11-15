@@ -100,8 +100,8 @@ define_macros = [
 [build-system]
 requires = [
     "hatchling",
-    "hatch-vcs == 0.4",
-    "hatch-cython == 0.5",
+    "hatch-vcs",
+    "hatch-cython",
     "numpy >= 2.0",
     "cython >= 3.0",
 ]
