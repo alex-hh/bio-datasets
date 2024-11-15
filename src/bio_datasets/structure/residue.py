@@ -327,7 +327,8 @@ class ResidueDictionary:
                 keep_hydrogens or res_name not in ["H", "D", "D8U"]
             )
             res_filter = res_filter and (
-                res_name in chem_component_3to1 and res_name in chem_component_categories
+                res_name in chem_component_3to1
+                and res_name in chem_component_categories
             )
             return res_filter
 
