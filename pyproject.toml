@@ -1,28 +1,33 @@
-[project]
+[tool.poetry]
 name = "datasets-bio"
 version = "0.1.2"
 description = "Fast, convenient and shareable datasets for BioML"
-authors = [{ name = "Alex Hawkins-Hooker" }]
-requires-python = ">=3.7"
+authors = ["Alex Hawkins-Hooker"]
+license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/bioml-tools/bio-datasets"
+repository = "https://github.com/bioml-tools/bio-datasets"
 packages = [
     { include = "bio_datasets", from = "src" },
-    { include = "bio_datasets_cli", from = "src" }
-]
-long_description = "Bringing bio (molecules and more) to the HuggingFace Datasets library. This (unofficial!) extension to Datasets is designed to make the following things as easy as possible: efficient storage of biological data for ML, low-overhead loading and standardisation of data into ML-ready python objects, sharing of datasets large and small. We aim to do these three things and *no more*, leaving you to get on with the science!"
-long_description_content_type = "text/markdown"
-
-dependencies = [
-    "pytest>=8.2.0",
-    "foldcomp>=0.0.7",
-    "biotite>=1.0.1",
-    "huggingface_hub>=0.26.2",
-    "datasets-fast>=3.1.3",
-    "packaging>=23.2"
+    { include = "bio_datasets_cli", from = "src" },
 ]
 
-[project.scripts]
+[tool.poetry.dependencies]
+python = ">=3.7"
+pytest = ">=8.2.0"
+foldcomp = ">=0.0.7"
+biotite = ">=1.0.1"
+huggingface_hub = ">=0.26.2"
+datasets-fast = ">=3.1.3"
+packaging = ">=23.2"
+
+[tool.poetry.scripts]
 cif2bcif = "bio_datasets_cli.cif2bcif:main"
 cifs2bcifs = "bio_datasets_cli.cif2bcif:dir_main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [project.source]
 name = "pypi"
@@ -58,51 +63,3 @@ ignore = ["W503", "W391", "E203"]
 # ref W503: see notes in https://lintlyci.github.io/Flake8Rules/rules/W503.html
 # ref W391: see possible issue with vim https://github.com/PyCQA/pycodestyle/issues/365
 # ref E203: https://github.com/psf/black/issues/315
-
-
-# config for python -m build / pipx run build
-[tool.hatch.build.targets.sdist]
-exclude = [
-  "tests",
-  "benchmarks",
-  "doc",
-  "setup_ccd.py",
-  # .github, .gitignore, .gitattributes
-  ".git*",
-]
-artifacts = [
-  "src/biotite/structure/info/components.bcif"
-]
-
-[tool.hatch.build.targets.wheel]
-artifacts = [
-  "src/bio_datasets/structure/library/components.bcif",
-  "src/bio_datasets/structure/library/cc-counts.tdd",
-  "src/bio_datasets/structure/library/ccd_residue_dictionary.json",
-]
-
-[tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.build.hooks.vcs]
-version-file = "src/bio_datasets/version.py"
-
-[tool.hatch.build.targets.wheel.hooks.cython]
-dependencies = ["hatch-cython"]
-
-[tool.hatch.build.targets.wheel.hooks.cython.options]
-include_numpy = true
-compile_py = false
-define_macros = [
-    ["NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION"],
-]
-
-[build-system]
-requires = [
-    "hatchling",
-    "hatch-vcs",
-    "hatch-cython",
-    "numpy >= 2.0",
-    "cython >= 3.0",
-]
-build-backend = "hatchling.build"
