@@ -499,7 +499,9 @@ class AtomArrayFeature(CustomFeature):
     def _encode_atom_array(self, value: bs.AtomArray, is_standardised: bool) -> dict:
         if self.all_atoms_present and not is_standardised:
             assert self.residue_dictionary is not None
-            value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
+            value = Biomolecule.standardise_atoms(
+                value, self.residue_dictionary, backbone_only=self.backbone_only
+            )
         if self.load_as == "chain":
             chain_ids = np.unique(value.chain_id)
             assert (

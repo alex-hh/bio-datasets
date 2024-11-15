@@ -219,6 +219,7 @@ class Biomolecule(Generic[T]):
             residue_dictionary=residue_dictionary,
             chain_id=atoms.chain_id[residue_starts],
             extra_fields=[f for f in ALL_EXTRA_FIELDS if f in atoms._annot],
+            backbone_only=backbone_only,
         )
 
         # first we get an array of atom indices for each residue (i.e. a mapping from atom type index to expected index
@@ -289,7 +290,7 @@ class Biomolecule(Generic[T]):
         # if we can create a res start index for each atom, we can assign the value based on that...
         assert (
             np.unique(new_atom_array.res_index) == np.unique(atoms.res_index)
-        ).all(), "We need this to agree to use residue indexing for filling annotations"
+        ).all(), f"New res index contains unexpected values (not matching old res index) {np.unique(new_atom_array.res_index)} {np.unique(atoms.res_index)}"
         new_atom_array.set_annotation(
             "res_id",
             atoms.res_id[residue_starts][new_atom_array.res_index].astype(
@@ -335,7 +336,7 @@ class Biomolecule(Generic[T]):
             assert residue_dictionary.backbone_atoms is not None
             # TODO: more efficient backbone only
             new_atom_array = new_atom_array[
-                np.isin(new_atom_array.atom_name, residue_dictionary.backbone_atomss)
+                np.isin(new_atom_array.atom_name, residue_dictionary.backbone_atoms)
             ]
             full_residue_starts = get_residue_starts(new_atom_array)
         return new_atom_array

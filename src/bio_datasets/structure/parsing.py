@@ -414,14 +414,16 @@ def load_structure(
         raise ValueError(f"Unsupported file format: {file_type}")
 
 
-def _apply_transformations(structure, transformation_dict, operations):
+def _apply_transformations(
+    structure, transformation_dict, operations, include_sym_id=False
+):
     """
     Get subassembly by applying the given operations to the input
     structure containing affected asym IDs.
     """
     # Additional first dimesion for 'structure.repeat()'
     assembly_coord = np.zeros((len(operations),) + structure.coord.shape)
-    assembly_chain_ids = []
+    assembly_transform_ids = []
     # Apply corresponding transformation for each copy in the assembly
     for i, operation in enumerate(operations):
         coord = structure.coord
@@ -435,20 +437,15 @@ def _apply_transformations(structure, transformation_dict, operations):
             coord += translation_vector
 
         chain_id = structure.chain_id
-        if (coord == structure.coord).all():
-            # null operation should not change the chain ID
-            assembly_chain_ids.append(chain_id.copy())
-        else:
-            operation_str = "-".join(list(operation))
-            assembly_chain_ids.append(
-                np.char.add(
-                    chain_id, np.array(["-" + operation_str]).astype(chain_id.dtype)
-                )
-            )
+
+        assembly_transform_ids.append(
+            np.full(len(structure), "-".join(list(operation)))
+        )
         assembly_coord[i] = coord
 
     assembly = repeat(structure, assembly_coord)
-    assembly.chain_id = np.concatenate(assembly_chain_ids)
+    if include_sym_id:
+        assembly.set_annotation("sym_id", np.concatenate(assembly_transform_ids))
     return assembly
 
 
@@ -461,6 +458,7 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
     extra_fields=None,
     include_bonds=False,
     fill_missing_residues=False,
+    include_sym_id=True,
 ):
     """Modified from biotite.structure.io.pdbx.get_assembly to fill in missing residues.
 

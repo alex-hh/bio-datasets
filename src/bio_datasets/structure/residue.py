@@ -639,7 +639,7 @@ def create_single_chain_atom_array_from_restype_index(
     extra_fields: Optional[List[str]] = None,
     res_id: Optional[np.ndarray] = None,
     backbone_only: bool = False,
-    residue_index_offset: int = 0,
+    residue_index_offset: int = 0,  # TODO: fix this - which is getting to a crazy value
 ):
     """
     Populate annotations from restype_index, assuming all atoms are present.
@@ -647,7 +647,7 @@ def create_single_chain_atom_array_from_restype_index(
     assert isinstance(chain_id, str)
 
     if backbone_only:
-        residue_sizes = len(residue_dictionary.backbone_atoms) * len(restype_index)
+        residue_sizes = [len(residue_dictionary.backbone_atoms)] * len(restype_index)
     else:
         residue_sizes = residue_dictionary.get_residue_sizes(restype_index, chain_id)
         # (n_residues,) NOT (n_atoms,)
