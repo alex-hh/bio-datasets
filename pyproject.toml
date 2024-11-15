@@ -11,7 +11,7 @@ packages = [
 long_description = "Bringing bio (molecules and more) to the HuggingFace Datasets library. This (unofficial!) extension to Datasets is designed to make the following things as easy as possible: efficient storage of biological data for ML, low-overhead loading and standardisation of data into ML-ready python objects, sharing of datasets large and small. We aim to do these three things and *no more*, leaving you to get on with the science!"
 long_description_content_type = "text/markdown"
 
-[tool.poetry.dependencies]
+[project.dependencies]
 pytest = ">=8.2.0"
 foldcomp = ">=0.0.7"
 biotite = ">=1.0.1"
@@ -19,11 +19,11 @@ huggingface_hub = ">=0.26.2"
 datasets-fast = ">=3.1.3"
 packaging = ">=23.2"
 
-[tool.poetry.scripts]
+[project.scripts]
 cif2bcif = "bio_datasets_cli.cif2bcif:main"
 cifs2bcifs = "bio_datasets_cli.cif2bcif:dir_main"
 
-[tool.poetry.source]
+[project.source]
 name = "pypi"
 url = "https://pypi.org/simple"
 
