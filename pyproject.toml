@@ -14,12 +14,13 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.7"
-pytest = ">=8.2.0"
 foldcomp = ">=0.0.7"
 biotite = ">=1.0.1"
 huggingface_hub = ">=0.26.2"
 datasets-fast = ">=3.1.3"
 packaging = ">=23.2"
+pytest = ">=8.2.0"
+Cython = "3.0.11"
 
 [tool.poetry.scripts]
 cif2bcif = "bio_datasets_cli.cif2bcif:main"
