@@ -312,7 +312,7 @@ class ResidueDictionary:
         chem_component_3to1 = get_component_3to1()
         chem_component_categories = get_component_categories(get_component_types())
         frequencies = get_residue_frequencies()
-        res_names = np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array(str))
+        res_names = list(np.unique(ccd_data["chem_comp_atom"]["comp_id"].as_array(str)))
 
         def keep_res(res_name):
             res_filter = frequencies.get(res_name, 0) >= minimum_pdb_entries
@@ -325,6 +325,9 @@ class ResidueDictionary:
             )
             res_filter = res_filter and (
                 keep_hydrogens or res_name not in ["H", "D", "D8U"]
+            )
+            res_filter = res_filter and (
+                res_name in chem_component_3to1 and res_name in chem_component_categories
             )
             return res_filter
 
