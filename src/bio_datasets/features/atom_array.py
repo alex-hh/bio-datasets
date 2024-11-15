@@ -136,7 +136,8 @@ def encode_biotite_atom_array(
     file_type: str = "pdb",
 ) -> bytes:
     """Encode a biotite AtomArray to file_type (pdb/cif/bcif) -formatted bytes, optionally compressing with foldcomp."""
-    if file_type == "pdb":
+    if encode_with_foldcomp or file_type == "pdb":
+        assert file_type == "pdb", "foldcomp only supported for pdb"
         return _pdb_encode_biotite_atom_array(array, encode_with_foldcomp, name)
     elif file_type == "cif":
         cf = pdbx.CIFFile()
@@ -742,6 +743,7 @@ class StructureFeature(CustomFeature):
     load_assembly: bool = (
         False  # load full biological assembly. requires cif / bcif file type.
     )
+    file_type: Optional[str] = None  # will be inferred from example if not provided
     fill_missing_residues: bool = False  # fill in missing residues from entity_poly_seq
     include_bonds: bool = False  # include bonds in the AtomArray
     with_occupancy: bool = False
@@ -785,37 +787,46 @@ class StructureFeature(CustomFeature):
             extra_fields.append("charge")
         return extra_fields
 
+    def _encode_bytes(
+        self, value: bytes, path: Optional[str] = None, file_type: Optional[str] = None
+    ) -> dict:
+        # store the Structure bytes, and path is optionally used to infer the Structure format using the file extension
+        if file_type is None and path is not None:
+            file_type = os.path.splitext(path)[1][1:].lower()
+        if self.compression == "gzip":
+            assert not file_type.endswith(
+                ".gz"
+            ), "Gzipped files should not be compressed again"
+            value["bytes"] = gzip.compress(value["bytes"])
+            value["type"] = value["type"] + ".gz"
+        elif self.compression == "foldcomp":
+            assert (
+                file_type == "pdb"
+            ), "foldcomp compression only supported for PDB files"
+            value["bytes"] = foldcomp.compress(value["bytes"])
+            value["type"] = "fcz"
+        elif self.compression is not None:
+            raise ValueError(f"Unsupported compression: {self.compression}")
+        if self.file_type is not None:
+            assert file_type == self.file_type
+        return {"bytes": value["bytes"], "path": path, "type": file_type}
+
     def _encode_dict(self, value: dict) -> dict:
         if "atoms" in value:
-            preferred_type = value.get("type", "pdb")
-            return self._encode_example(value["atoms"], preferred_type)
+            file_type = self.file_type or "pdb"
+            return self._encode_example(value["atoms"], file_type)
         if value.get("path") is not None and os.path.isfile(value["path"]):
             path = value["path"]
             file_type = value.get("type") or file_type_from_path(path)
+            if self.file_type is not None:
+                assert file_type == self.file_type
             # we set "bytes": None to not duplicate the data if they're already available locally; embedding happens later
             # (this assumes invocation in what context?)
             return {"bytes": None, "path": path, "type": file_type}
         elif value.get("bytes") is not None:
-            # store the Structure bytes, and path is optionally used to infer the Structure format using the file extension
-            path = value.get("path")
-            file_type = value.get("type")
-            if file_type is None and path is not None:
-                file_type = os.path.splitext(path)[1][1:].lower()
-            if self.compression == "gzip":
-                assert not file_type.endswith(
-                    ".gz"
-                ), "Gzipped files should not be compressed again"
-                value["bytes"] = gzip.compress(value["bytes"])
-                value["type"] = value["type"] + ".gz"
-            elif self.compression == "foldcomp":
-                assert (
-                    file_type == "pdb"
-                ), "foldcomp compression only supported for PDB files"
-                value["bytes"] = foldcomp.compress(value["bytes"])
-                value["type"] = "fcz"
-            elif self.compression is not None:
-                raise ValueError(f"Unsupported compression: {self.compression}")
-            return {"bytes": value["bytes"], "path": path, "type": file_type}
+            return self._encode_bytes(
+                value, path=value.get("path"), file_type=value.get("type")
+            )
         else:
             raise ValueError(
                 f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
@@ -849,7 +860,7 @@ class StructureFeature(CustomFeature):
                     encode_with_foldcomp=self.encode_with_foldcomp,
                     file_type=_preferred_type,
                 ),
-                "type": "pdb" if not self.encode_with_foldcomp else "fcz",
+                "type": _preferred_type if not self.encode_with_foldcomp else "fcz",
             }
         elif isinstance(value, dict):
             encoded = self._encode_dict(value)
