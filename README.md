@@ -198,7 +198,18 @@ data will then automatically be decoded in the way specified by the Features.
 
 ### Creating your own feature types
 
-TODO: add docs.
+Features require specification of three things:
+(i) how the data is stored
+(ii) how the data is loaded
+(ii) how the feature configuration is serialised and stored as metadata
+
+These functionalities are handled by methods of the CustomFeature base class. To implement a new feature, inherit from CustomFeature and implement __call__, _encode_example and _decode_example.
+
+__call__  is invoked by get_nested_type.
+
+Serialisation will be performed automatically by dataclasses asdict - to customise?
+
+TODO: example
 
 
 ## Roadmap

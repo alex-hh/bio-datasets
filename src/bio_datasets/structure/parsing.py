@@ -421,7 +421,7 @@ def _apply_transformations(structure, transformation_dict, operations):
     """
     # Additional first dimesion for 'structure.repeat()'
     assembly_coord = np.zeros((len(operations),) + structure.coord.shape)
-    assembly_chain_ids = []
+    sym_ids = []
     # Apply corresponding transformation for each copy in the assembly
     for i, operation in enumerate(operations):
         coord = structure.coord
@@ -434,21 +434,11 @@ def _apply_transformations(structure, transformation_dict, operations):
             # Translate
             coord += translation_vector
 
-        chain_id = structure.chain_id
-        if (coord == structure.coord).all():
-            # null operation should not change the chain ID
-            assembly_chain_ids.append(chain_id.copy())
-        else:
-            operation_str = "-".join(list(operation))
-            assembly_chain_ids.append(
-                np.char.add(
-                    chain_id, np.array(["-" + operation_str]).astype(chain_id.dtype)
-                )
-            )
+        sym_ids.append("-".join(list(operation)))
         assembly_coord[i] = coord
 
     assembly = repeat(structure, assembly_coord)
-    assembly.chain_id = np.concatenate(assembly_chain_ids)
+    assembly.set_annotation("sym_id", np.repeat(sym_ids, structure.array_length()))
     return assembly
 
 
@@ -461,6 +451,7 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
     extra_fields=None,
     include_bonds=False,
     fill_missing_residues=False,
+    include_sym_id=True,
 ):
     """Modified from biotite.structure.io.pdbx.get_assembly to fill in missing residues.
 
@@ -522,7 +513,10 @@ def get_assembly_with_missing_residues(  # noqa: CCR001
             # Filter affected asym IDs
             sub_structure = structure[..., np.isin(structure.label_asym_id, asym_ids)]
             sub_assembly = _apply_transformations(
-                sub_structure, transformations, operations
+                sub_structure,
+                transformations,
+                operations,
+                include_sym_id=True,
             )
             # Merge the chains with asym IDs for this operation
             # with chains from other operations

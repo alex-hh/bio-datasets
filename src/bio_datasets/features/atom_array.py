@@ -31,6 +31,7 @@ from bio_datasets.structure import (
     BiomoleculeChain,
     BiomoleculeComplex,
     parsing,
+    pdbx,
 )
 from bio_datasets.structure.biomolecule import (
     create_complete_atom_array_from_restype_index,
@@ -109,13 +110,11 @@ def protein_atom_array_from_dict(
         raise ValueError("No coordinates found")
 
 
-def encode_biotite_atom_array(
+def _pdb_encode_biotite_atom_array(
     array: bs.AtomArray, encode_with_foldcomp: bool = False, name: Optional[str] = None
-) -> str:
+) -> bytes:
     """
-    Encode a biotite AtomArray to pdb string bytes.
-
-    TODO: support foldcomp encoding
+    Encode a biotite AtomArray to pdb string bytes, optionally compressing with foldcomp.
     """
     pdbf = PDBFile()
     pdbf.set_structure(array)
@@ -128,6 +127,33 @@ def encode_biotite_atom_array(
         return foldcomp.compress(name, contents)
     else:
         return contents.encode()
+
+
+def encode_biotite_atom_array(
+    array: bs.AtomArray,
+    encode_with_foldcomp: bool = False,
+    name: Optional[str] = None,  # just for foldcomp
+    file_type: str = "pdb",
+) -> bytes:
+    """Encode a biotite AtomArray to file_type (pdb/cif/bcif) -formatted bytes, optionally compressing with foldcomp."""
+    if encode_with_foldcomp or file_type == "pdb":
+        assert file_type == "pdb", "foldcomp only supported for pdb"
+        return _pdb_encode_biotite_atom_array(array, encode_with_foldcomp, name)
+    elif file_type == "cif":
+        cf = pdbx.CIFFile()
+        pdbx.set_structure(cf, array)
+        string_io = StringIO()
+        cf.write(string_io)
+        return string_io.getvalue().encode()
+    elif file_type == "bcif":
+        cf = pdbx.BinaryCIFFile()
+        pdbx.set_structure(cf, array)
+        bytes_io = BytesIO()
+        cf = pdbx.compress(cf)
+        cf.write(bytes_io)
+        return bytes_io.getvalue()
+    else:
+        raise ValueError(f"Unsupported file type: {file_type}")
 
 
 def load_structure_from_file_dict(
@@ -499,15 +525,17 @@ class AtomArrayFeature(CustomFeature):
     def _encode_atom_array(self, value: bs.AtomArray, is_standardised: bool) -> dict:
         if self.all_atoms_present and not is_standardised:
             assert self.residue_dictionary is not None
-            value = Biomolecule.standardise_atoms(value, self.residue_dictionary)
+            value = Biomolecule.standardise_atoms(
+                value, self.residue_dictionary, backbone_only=self.backbone_only
+            )
         if self.load_as == "chain":
             chain_ids = np.unique(value.chain_id)
             assert (
                 len(chain_ids) == 1
             ), "Only single chain supported when `load_as` == 'chain'"
         residue_starts = get_residue_starts(value)
-        if len(residue_starts) > 65535:
-            raise ValueError("AtomArray too large to fit in uint16 (residue starts)")
+        if residue_starts.max() > 2**32 - 1 and not self.all_atoms_present:
+            raise ValueError("AtomArray too large to fit in uint32 (residue starts)")
         return self._build_atom_array_struct(value, residue_starts)
 
     def _build_atom_array_struct(
@@ -715,6 +743,7 @@ class StructureFeature(CustomFeature):
     load_assembly: bool = (
         False  # load full biological assembly. requires cif / bcif file type.
     )
+    file_type: Optional[str] = None  # will be inferred from example if not provided
     fill_missing_residues: bool = False  # fill in missing residues from entity_poly_seq
     include_bonds: bool = False  # include bonds in the AtomArray
     with_occupancy: bool = False
@@ -758,40 +787,54 @@ class StructureFeature(CustomFeature):
             extra_fields.append("charge")
         return extra_fields
 
+    def _encode_bytes(
+        self, value: bytes, path: Optional[str] = None, file_type: Optional[str] = None
+    ) -> dict:
+        # store the Structure bytes, and path is optionally used to infer the Structure format using the file extension
+        if file_type is None and path is not None:
+            file_type = os.path.splitext(path)[1][1:].lower()
+        if self.compression == "gzip":
+            assert not file_type.endswith(
+                ".gz"
+            ), "Gzipped files should not be compressed again"
+            value["bytes"] = gzip.compress(value["bytes"])
+            value["type"] = value["type"] + ".gz"
+        elif self.compression == "foldcomp":
+            assert (
+                file_type == "pdb"
+            ), "foldcomp compression only supported for PDB files"
+            value["bytes"] = foldcomp.compress(value["bytes"])
+            value["type"] = "fcz"
+        elif self.compression is not None:
+            raise ValueError(f"Unsupported compression: {self.compression}")
+        if self.file_type is not None:
+            assert file_type == self.file_type
+        return {"bytes": value["bytes"], "path": path, "type": file_type}
+
     def _encode_dict(self, value: dict) -> dict:
+        if "atoms" in value:
+            file_type = self.file_type or "pdb"
+            return self._encode_example(value["atoms"], file_type)
         if value.get("path") is not None and os.path.isfile(value["path"]):
             path = value["path"]
             file_type = value.get("type") or file_type_from_path(path)
+            if self.file_type is not None:
+                assert file_type == self.file_type
             # we set "bytes": None to not duplicate the data if they're already available locally; embedding happens later
             # (this assumes invocation in what context?)
             return {"bytes": None, "path": path, "type": file_type}
         elif value.get("bytes") is not None:
-            # store the Structure bytes, and path is optionally used to infer the Structure format using the file extension
-            path = value.get("path")
-            file_type = value.get("type")
-            if file_type is None and path is not None:
-                file_type = os.path.splitext(path)[1][1:].lower()
-            if self.compression == "gzip":
-                assert not file_type.endswith(
-                    ".gz"
-                ), "Gzipped files should not be compressed again"
-                value["bytes"] = gzip.compress(value["bytes"])
-                value["type"] = value["type"] + ".gz"
-            elif self.compression == "foldcomp":
-                assert (
-                    file_type == "pdb"
-                ), "foldcomp compression only supported for PDB files"
-                value["bytes"] = foldcomp.compress(value["bytes"])
-                value["type"] = "fcz"
-            elif self.compression is not None:
-                raise ValueError(f"Unsupported compression: {self.compression}")
-            return {"bytes": value["bytes"], "path": path, "type": file_type}
+            return self._encode_bytes(
+                value, path=value.get("path"), file_type=value.get("type")
+            )
         else:
             raise ValueError(
                 f"A structure sample should have one of 'path' or 'bytes' but they are missing or None in {value}."
             )
 
-    def _encode_example(self, value: Union[str, bytes, bs.AtomArray]) -> dict:
+    def _encode_example(
+        self, value: Union[str, bytes, bs.AtomArray], _preferred_type="pdb"
+    ) -> dict:
         """Encode example into a format for Arrow.
 
         Similar to the built-in Image/Audio features, we allow for file contents to be written
@@ -815,8 +858,9 @@ class StructureFeature(CustomFeature):
                 "bytes": encode_biotite_atom_array(
                     value,
                     encode_with_foldcomp=self.encode_with_foldcomp,
+                    file_type=_preferred_type,
                 ),
-                "type": "pdb" if not self.encode_with_foldcomp else "fcz",
+                "type": _preferred_type if not self.encode_with_foldcomp else "fcz",
             }
         elif isinstance(value, dict):
             encoded = self._encode_dict(value)
