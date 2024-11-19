@@ -414,16 +414,14 @@ def load_structure(
         raise ValueError(f"Unsupported file format: {file_type}")
 
 
-def _apply_transformations(
-    structure, transformation_dict, operations, include_sym_id=False
-):
+def _apply_transformations(structure, transformation_dict, operations):
     """
     Get subassembly by applying the given operations to the input
     structure containing affected asym IDs.
     """
     # Additional first dimesion for 'structure.repeat()'
     assembly_coord = np.zeros((len(operations),) + structure.coord.shape)
-    assembly_transform_ids = []
+    sym_ids = []
     # Apply corresponding transformation for each copy in the assembly
     for i, operation in enumerate(operations):
         coord = structure.coord
@@ -436,14 +434,11 @@ def _apply_transformations(
             # Translate
             coord += translation_vector
 
-        assembly_transform_ids.append(
-            np.full(len(structure), "-".join(list(operation)))
-        )
+        sym_ids.append("-".join(list(operation)))
         assembly_coord[i] = coord
 
     assembly = repeat(structure, assembly_coord)
-    if include_sym_id:
-        assembly.set_annotation("sym_id", np.concatenate(assembly_transform_ids))
+    assembly.set_annotation("sym_id", np.repeat(sym_ids, structure.array_length()))
     return assembly
 
 
