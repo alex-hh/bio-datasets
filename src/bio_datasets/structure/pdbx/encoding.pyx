@@ -523,6 +523,118 @@ class RunLengthEncoding(Encoding):
 
 
 @dataclass
+class SparseEncoding(Encoding):
+    """
+    Encoding that compresses sparse arrays into (index, value) pairs.
+
+    TODO: maybe combine with RunLengthEncoding
+
+    Parameters
+    ----------
+    fpe_factor: float
+        factor used to determine FixedPointEncoding for non-zero
+    zero_tol: float
+        used to determine threshold for zeros
+    src_type : dtype or TypeCode, optional
+        The data type of the array to be encoded.
+        Either a NumPy dtype or a *BinaryCIF* type code is accepted.
+        The dtype must be a integer type.
+        If omitted, the data type is taken from the data the
+        first time :meth:`encode()` is called.
+
+    Attributes
+    ----------
+    fpe_factor: float
+    zero_tol: float
+    src_type : TypeCode
+
+    Examples
+    --------
+
+    >>> data = np.array([1, 1, 1, 5, 3, 3])
+    >>> print(data)
+    [1 1 1 5 3 3]
+    >>> encoded = RunLengthEncoding().encode(data)
+    >>> print(encoded)
+    [1 3 5 1 3 2]
+    >>> # Emphasize the the pairs
+    >>> print(encoded.reshape(-1, 2))
+    [[1 3]
+     [5 1]
+     [3 2]]
+    """
+    fpe_factor: float
+    zero_tol: float
+    src_type: ... = None
+
+    def __post_init__(self):
+        if self.src_type is not None:
+            self.src_type = TypeCode.from_dtype(self.src_type)
+        self._fpe = FixedPointEncoding(self.fpe_factor, self.src_type)
+
+    def encode(self, data):
+        # If not given in constructor, it is determined from the data
+        if self.src_type is None:
+            self.src_type = TypeCode.from_dtype(data.dtype)
+        if self.src_size is None:
+            self.src_size = data.shape[0]
+        elif self.src_size != data.shape[0]:
+            raise IndexError(
+                "Given source size does not match actual data size"
+            )
+        return self._encode(_safe_cast(data, self.src_type.to_dtype()))
+
+    def decode(self, data):
+        return self._decode(
+            data, np.empty(0, dtype=self.src_type.to_dtype())
+        )
+
+    def _encode(self, const Integer[:] data):
+        # TODO: handle sparsification and fixed point encoding
+        # Pessimistic allocation of output array: no zeros
+        cdef int32[:] output = np.zeros(data.shape[0] * 2 + 1, dtype=np.int32)
+        cdef int i=0, j=1
+        cdef int val = data[0]
+        cdef int run_length = 0
+        cdef int curr_val
+        output[0] = (data == 0).sum()  # encode num zeros
+        for i in range(data.shape[0]):
+            curr_val = data[i]
+            if curr_val != 0:
+                # New element -> Write element with run-length
+                output[j] = val
+                output[j+1] = i
+                j += 2
+        # Trim to correct size
+        return np.asarray(output)[:j]
+
+    def _decode(self, const Integer[:] data, OutputInteger[:] output_type):
+        """
+        `output_type` is merely a typed placeholder to allow for static
+        typing of output.
+        """
+        if (data.shape[0] - 1) % 2 != 0:
+            raise ValueError("Invalid sparse encoded data")
+
+        cdef int length = 0
+        cdef int i, j
+        cdef int value, repeat
+
+        length = (data.shape[0] - 1) // 2
+
+        cdef OutputInteger[:] output = np.zeros(
+            length, dtype=np.asarray(output_type).dtype
+        )
+        # Fill output array
+        j = 0
+        for i in range(1, data.shape[0], 2):
+            value = data[i]
+            index = data[i+1]
+            output[index] = value
+        return np.asarray(output)
+
+
+@dataclass
 class DeltaEncoding(Encoding):
     """
     Encoding that encodes an array of integers into an array of
